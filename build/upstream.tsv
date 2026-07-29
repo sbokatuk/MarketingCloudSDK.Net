@@ -1,21 +1,32 @@
 # What build/check-upstream.sh watches, and the single source of truth for it.
 #
-# The script (shared verbatim with the binding repositories) knows how to query each ecosystem
-# but nothing about which components matter here. This repository binds nothing, so what it
-# watches is the two NATIVE MobilePush SDK lines its pinned binding packages wrap: a new
-# Salesforce release is the signal that the binding repositories will move and this façade will
-# need re-pinning behind them. The binding packages themselves - and the SFMCSDK.Net core
-# umbrella - are pinned by hand in Directory.Build.props and have no automated watcher: they are
-# this author's own releases.
+# The script (shared verbatim across every repository in these families) knows how to query each
+# ecosystem but nothing about which components matter here. This repository binds nothing native,
+# and deliberately does not watch the Salesforce SDKs: MarketingCloudSDK.Net.Android and
+# MarketingCloudSDK.Net.iOS already do that, each for the platform it binds. Watching them here as
+# well would file the same native release as an issue in three repositories at once.
+#
+# What this repository watches instead is the one thing nothing else can see: the packages it pins
+# by hand, by exact version, in Directory.Build.props. That is both platform bindings and the
+# SFMCSDK.Net core umbrella, which sits underneath this one and moves on its own release train.
+# When any of them publishes, this façade keeps resolving the older package until somebody
+# re-pins it, and nothing said so.
+#
+# The `nuget` check is deliberately asymmetric: a pin BEHIND nuget.org is a finding (re-pin here),
+# a pin AHEAD of it is the normal mid-flight state of a release train (the platform repositories
+# publish first, then SFMCSDK.Net, then this one) and is only logged. A prerelease pin is always
+# reported.
 #
 # Columns are single-tab-separated.
-#   group    reporting group - one note file per group, titled with this text
-#   label    how the component is named inside the note
-#   kind     cocoapods | maven | github-release | github-tag
+#   group    reporting group - one GitHub issue per group, titled with this text
+#   label    how the component is named inside the issue
+#   kind     cocoapods | maven | github-release | github-tag | nuget
 #   pin      the MSBuild property in Directory.Build.props holding the pinned version
-#   locator  kind-specific: pod name, groupId:artifactId[:packaging][@repo], or owner/repo
+#   locator  kind-specific: pod name, groupId:artifactId[:packaging][@repo], owner/repo, or the
+#            NuGet package id
 #   confirm  download URL template with {version}, or "-" to derive it from the locator
 #
 # group	label	kind	pin	locator	confirm
-MobilePush iOS	MarketingCloudSDK-iOS	github-release	SfmcNativeVersion	salesforce-marketingcloud/MarketingCloudSDK-iOS	https://github.com/salesforce-marketingcloud/MarketingCloudSDK-iOS/releases/download/{version}/MarketingCloudSDK.xcframework.zip
-MobilePush Android	marketingcloudsdk	maven	SfmcAndroidNativeVersion	com.salesforce.marketingcloud:marketingcloudsdk:aar@https://salesforce-marketingcloud.github.io/MarketingCloudSDK-Android/repository	-
+MobilePush Android	MarketingCloudSDK.Net.Android	nuget	SfmcAndroidPackageVersion	MarketingCloudSDK.Net.Android	-
+MobilePush iOS	MarketingCloudSDK.Net.iOS	nuget	SfmcIosPackageVersion	MarketingCloudSDK.Net.iOS	-
+SFMCSDK core	SFMCSDK.Net	nuget	SfmcCorePackageVersion	SFMCSDK.Net	-
