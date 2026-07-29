@@ -82,6 +82,12 @@
       androidx.compose.runtime.annotation types - see the README's troubleshooting section.
     -->
     <PackageReference Include="Xamarin.AndroidX.Compose.Runtime.Annotation.Jvm" Version="1.9.5" ExcludeAssets="all" />
+    <!--
+      MAUI 10.0.20 floors LiveData.Core in the 2.9.4 bracket while the v11 binding generation
+      demands 2.10.0 (NU1107). A direct reference at the higher version settles the graph the
+      way every consumer of these bindings will have to - the app genuinely ships 2.10.0.
+    -->
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core" Version="2.10.0" />
   </ItemGroup>
 
 </Project>
