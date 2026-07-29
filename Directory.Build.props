@@ -1,0 +1,181 @@
+<Project>
+
+  <PropertyGroup>
+    <!--
+      Package versions are <MarketingCloudSDK iOS version>.<binding revision>, e.g. 11.0.2.1 - the
+      same scheme the two platform binding repositories use, and deliberately the *iOS* line.
+
+      This repository binds nothing itself. It is a cross-platform façade over two independently
+      versioned binding packages:
+
+        MarketingCloudSDK.Net.iOS      11.0.2.x -> MarketingCloudSDK (MarketingCloudSDK-iOS)  11.0.2
+        MarketingCloudSDK.Net.Android  11.0.1.x -> com.salesforce.marketingcloud:marketingcloudsdk  11.0.1
+
+      These never move in lock-step: Salesforce releases the iOS and Android SDKs on separate
+      cadences and the version numbers have never matched - the Unified SDK generation shipped as
+      1.x on both and diverged immediately. A façade therefore has to pick one line to name itself
+      after or invent a third numbering nobody can map back to anything. It picks iOS, matching
+      the sibling SFMCSDK.Net façade's convention, and states the Android version everywhere it
+      states its own.
+
+      The fourth component belongs to this repository and advances when the façade changes while
+      both underlying packages stay put.
+
+      CheckReadmeVersions.sh and the workflows sed-parse these elements by name; keep them as
+      literal values on their own lines rather than composing them from other properties.
+    -->
+    <SfmcNativeVersion>11.0.2</SfmcNativeVersion>
+    <SfmcBindingRevision>1</SfmcBindingRevision>
+    <VersionPrefix>$(SfmcNativeVersion).$(SfmcBindingRevision)</VersionPrefix>
+
+    <!--
+      The native Android SDK line inside the pinned Android binding package - stated here so the
+      README checker and the release notes can name it without deriving it from the package
+      version, which would silently go wrong the day the binding revision grows a fifth digit.
+    -->
+    <SfmcAndroidNativeVersion>11.0.1</SfmcAndroidNativeVersion>
+
+    <!--
+      The binding and core package versions this façade is compiled against, referenced with
+      exact-bracketed ranges ([x.y.z.n]) in the csproj rather than as floating minimums. The
+      façade calls each repository's hand-written convenience layer - the Action overloads of
+      Init/RequestSdk on Android are that package's Additions, the hand-maintained sfmc_*
+      category surface on iOS is that binding's whole reason to exist - and none of it carries a
+      compatibility promise beyond "the pinned revision has them". A bare minimum would let an
+      app's direct reference float this façade onto a binding revision it has never been compiled
+      or device-tested against, and the failure would be a consumer's runtime, not this build.
+      Moving a pin is a deliberate edit here, followed by the e2e suites.
+
+      SfmcCorePackageVersion is the SFMCSDK.Net *umbrella* (the core façade this one delegates
+      identity to), referenced on every head including the neutral ones - which is what makes
+      ISfmcIdentity part of this package's public surface on a plain net9.0 class library too.
+
+      Scripts sed-parse these properties by name (CheckReadmeVersions.sh, release.yml); keep
+      them literal.
+    -->
+    <SfmcAndroidPackageVersion>11.0.1.1</SfmcAndroidPackageVersion>
+    <SfmcIosPackageVersion>11.0.2.1</SfmcIosPackageVersion>
+    <SfmcCorePackageVersion>4.0.1.1</SfmcCorePackageVersion>
+  </PropertyGroup>
+
+  <!--
+    Target frameworks: net8, net9 and net10, in two pack passes.
+
+    Each .NET SDK's android/ios workloads ship reference packs for the current target framework
+    and the previous one - the .NET 9 band builds net8 + net9, the .NET 10 band builds net9 +
+    net10 - so no single SDK builds all three. BuildNugets.sh packs twice and merge-packages.py
+    grafts the net10 assets into the net9 packages, exactly as both platform binding repositories
+    do. The three target-framework versions per platform are the ones both platform packages ship,
+    and the façade matches them: a façade head with no matching binding asset would fail restore,
+    and a binding head the façade skipped would silently push consumers at the raw API.
+
+    The plain net8.0/net9.0/net10.0 asset is not padding. A MAUI app routinely also has a Windows
+    head, and a shared class library or unit-test project has no platform at all; NuGet resolves
+    each of those independently, and without a platform-neutral asset every one of them fails
+    restore with NU1202 and the reference has to be guarded by target platform. With it, the
+    reference is unconditional and the neutral assembly's Core seams throw a documented
+    PlatformNotSupportedException - see Platforms/Neutral.
+
+    SfmcSdkBand selects which pass a given build is; the default is the net9 band so a plain
+    `dotnet build` under the repository's global.json works without ceremony.
+  -->
+  <PropertyGroup>
+    <SfmcSdkBand Condition=" '$(SfmcSdkBand)' == '' ">net9</SfmcSdkBand>
+
+    <SfmcNeutralTargetFrameworks Condition=" '$(SfmcSdkBand)' == 'net9' ">net8.0;net9.0</SfmcNeutralTargetFrameworks>
+    <SfmcNeutralTargetFrameworks Condition=" '$(SfmcSdkBand)' == 'net10' ">net10.0</SfmcNeutralTargetFrameworks>
+
+    <SfmcAndroidTargetFrameworks Condition=" '$(SfmcSdkBand)' == 'net9' ">net8.0-android34.0;net9.0-android35.0</SfmcAndroidTargetFrameworks>
+    <SfmcAndroidTargetFrameworks Condition=" '$(SfmcSdkBand)' == 'net10' ">net10.0-android36.0</SfmcAndroidTargetFrameworks>
+
+    <SfmcIosTargetFrameworks Condition=" '$(SfmcSdkBand)' == 'net9' ">net8.0-ios18.0;net9.0-ios18.0</SfmcIosTargetFrameworks>
+    <SfmcIosTargetFrameworks Condition=" '$(SfmcSdkBand)' == 'net10' ">net10.0-ios26.0</SfmcIosTargetFrameworks>
+  </PropertyGroup>
+
+  <!--
+    MarketingCloudSDK.Net.UnitTests is run with -p:SfmcNeutralOnly=true so the façade it
+    references collapses to its neutral target frameworks. It has to be a global property rather
+    than reference metadata: restore walks every target framework of a referenced project
+    regardless of what the reference asks for, so neither SetTargetFramework nor
+    AdditionalProperties prunes it. Without it, referencing the façade drags the android/ios legs
+    into the reference graph, and merely *evaluating* those needs the matching workloads
+    installed - which would turn the unit-test job from the pipeline's fastest signal into a
+    mobile-SDK install.
+
+    Only ever set by that test project. A pack must never set it: it would silently produce
+    packages with no platform legs at all - and it would break the MAUI package outright, whose
+    target frameworks are the platform ones (see src/MarketingCloudSDK.Net.Maui).
+  -->
+  <PropertyGroup Condition=" '$(SfmcNeutralOnly)' == 'true' ">
+    <SfmcAndroidTargetFrameworks></SfmcAndroidTargetFrameworks>
+    <SfmcIosTargetFrameworks></SfmcIosTargetFrameworks>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      The platform floors, matching the binding packages exactly - a façade cannot promise an OS
+      version its binding refuses to install on. iOS 12.2 because the MobilePush framework is
+      Swift and relies on the OS-provided Swift runtime, ABI-stable from 12.2. Android API 26,
+      the floor the marketingcloudsdk .aar manifests declare and the one the sibling repository's
+      device tests run against.
+    -->
+    <SfmcSupportedIosVersion>12.2</SfmcSupportedIosVersion>
+    <SfmcSupportedAndroidVersion>26</SfmcSupportedAndroidVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <!--
+      net8.0-* is past end of support, which the SDK reports as an error. It ships deliberately:
+      .NET 8 is still where a large share of plain .NET Android and iOS apps are, and both
+      platform binding packages carry the net8 assets this façade compiles against.
+    -->
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>s.bokatuk</Authors>
+    <Company>s.bokatuk</Company>
+    <Copyright>Copyright © s.bokatuk</Copyright>
+    <PackageProjectUrl>https://github.com/sbokatuk/MarketingCloudSDK.Net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/sbokatuk/MarketingCloudSDK.Net</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <!--
+      Plain MIT, unlike the two binding repositories' "MIT AND BSD-3-Clause" - and the difference
+      is the point. NuGet resolves a licence per package, not per graph: the binding packages ship
+      Salesforce's native binaries and so must name BSD-3-Clause themselves, which they do. This
+      package ships only its own MIT code; the native payloads arrive through the dependencies,
+      each carrying its own expression and both licence texts. Restating BSD-3-Clause here would
+      claim this package contains something it does not.
+    -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition=" '$(GITHUB_ACTIONS)' == 'true' ">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!--
+    Surface the curated release notes on nuget.org. docs/release-notes/<version>.md already feeds
+    the GitHub release; packing it here is what makes it reach the .nupkg. A version with no
+    curated file - a PR prerelease of unreleased work, typically - falls back to the releases page
+    rather than shipping nothing.
+  -->
+  <PropertyGroup>
+    <SfmcReleaseNotesFile>$(MSBuildThisFileDirectory)docs/release-notes/$(VersionPrefix).md</SfmcReleaseNotesFile>
+    <PackageReleaseNotes Condition=" Exists('$(SfmcReleaseNotesFile)') ">$([System.IO.File]::ReadAllText('$(SfmcReleaseNotesFile)'))</PackageReleaseNotes>
+    <PackageReleaseNotes Condition=" '$(PackageReleaseNotes)' == '' ">https://github.com/sbokatuk/MarketingCloudSDK.Net/releases/tag/v$(VersionPrefix)</PackageReleaseNotes>
+  </PropertyGroup>
+
+</Project>

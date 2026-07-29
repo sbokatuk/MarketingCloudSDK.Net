@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../Sfmc.Facade.props" />
+
+  <PropertyGroup>
+    <PackageId>MarketingCloudSDK.Net</PackageId>
+    <Title>Salesforce Marketing Cloud MobilePush for .NET, cross-platform</Title>
+    <Description>
+      One cross-platform API for Salesforce Marketing Cloud MobilePush: awaitable initialization
+      with real credentials, identity (contact key and attributes) via the SFMC SDK core,
+      registration reads and tag/attribute edits on Android and iOS from shared code, over the
+      MarketingCloudSDK.Net.Android and MarketingCloudSDK.Net.iOS bindings. Restores on plain
+      target frameworks too, so shared class libraries and unit tests need no platform
+      conditionals.
+    </Description>
+    <PackageTags>salesforce;marketingcloud;mobilepush;sfmc;push;notifications;inbox;maui;android;ios;binding</PackageTags>
+  </PropertyGroup>
+
+  <!--
+    The neutral head is ordinary managed code with no native dependency, so the logic that lives
+    there - options validation, the one-shot initialization guard, the registration editor's
+    argument validation, the timeout mechanics - is testable in milliseconds without a device.
+    MarketingCloudSDK.Net.UnitTests is where that happens.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="MarketingCloudSDK.Net.UnitTests" />
+  </ItemGroup>
+
+  <!--
+    The dependencies, pinned EXACTLY with bracketed ranges rather than as the floating minimums
+    bare versions would be.
+
+    SFMCSDK.Net - the core façade this one delegates identity to - is referenced on EVERY head,
+    neutral ones included: ISfmcIdentity is part of this package's public surface
+    (IMarketingCloudClient.Identity), so a shared class library compiling against the neutral
+    assembly needs the type too. On the platform heads it additionally guarantees the core
+    binding underneath agrees with what the MobilePush binding was built against - both pin the
+    same SFMCSDK.Net.Android / SFMCSDK.Net.iOS revisions.
+
+    The platform binding packages carry the native MobilePush SDKs. The façade calls their
+    hand-written convenience layers (the Action overloads of Init/RequestSdk are the Android
+    package's Additions; the sfmc_* category surface is the iOS binding's hand-maintained
+    ApiDefinitions), and neither carries a compatibility promise beyond "the pinned revision has
+    them" - a consumer floated onto a newer binding would discover any mismatch at runtime.
+    Moving a pin is a deliberate edit in Directory.Build.props, followed by the e2e suites.
+  -->
+  <ItemGroup>
+    <PackageReference Include="SFMCSDK.Net" Version="[$(SfmcCorePackageVersion)]" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <PackageReference Include="MarketingCloudSDK.Net.Android" Version="[$(SfmcAndroidPackageVersion)]" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+    <PackageReference Include="MarketingCloudSDK.Net.iOS" Version="[$(SfmcIosPackageVersion)]" />
+  </ItemGroup>
+
+</Project>

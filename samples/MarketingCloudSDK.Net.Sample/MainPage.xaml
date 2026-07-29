@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="MarketingCloudSDK.Net.Sample.MainPage">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="24,16" Spacing="12">
+
+            <Label Text="MarketingCloudSDK.Net"
+                   FontSize="24" FontAttributes="Bold"
+                   SemanticProperties.HeadingLevel="Level1" />
+            <Label Text="Drives the cross-platform façade: one InitializeAsync with your MobilePush credentials, identity, tags and registration reads on both platforms, with zero platform conditionals anywhere in this app. Credentials are runtime input only - nothing is committed - and against a tenant you do not own, server calls fail while the shared surface still works."
+                   FontSize="13" />
+
+            <Entry x:Name="ApplicationIdEntry" Placeholder="Application id" />
+            <Entry x:Name="AccessTokenEntry" Placeholder="Access token" IsPassword="True" />
+            <Entry x:Name="ServerUrlEntry" Placeholder="Server URL (https://mc.….device.marketingcloudapis.com/)" Keyboard="Url" />
+            <Entry x:Name="MidEntry" Placeholder="MID" Keyboard="Numeric" />
+
+            <Button x:Name="InitializeButton"
+                    Text="Initialize the SDK"
+                    Clicked="OnInitializeClicked" />
+
+            <Label x:Name="StatusLabel" Text="Not initialized." FontAttributes="Bold" />
+
+            <BoxView HeightRequest="1" Color="{StaticResource Gray300}" />
+
+            <Entry x:Name="ContactKeyEntry"
+                   Placeholder="Contact key"
+                   IsEnabled="False" />
+            <Button x:Name="ContactKeyButton"
+                    Text="Set contact key"
+                    IsEnabled="False"
+                    Clicked="OnSetContactKeyClicked" />
+
+            <Entry x:Name="TagEntry"
+                   Placeholder="Tag"
+                   IsEnabled="False" />
+            <Button x:Name="TagButton"
+                    Text="Add tag"
+                    IsEnabled="False"
+                    Clicked="OnAddTagClicked" />
+
+            <Button x:Name="RegistrationButton"
+                    Text="Show registration"
+                    IsEnabled="False"
+                    Clicked="OnShowRegistrationClicked" />
+            <Label x:Name="RegistrationLabel" FontSize="12" />
+
+            <BoxView HeightRequest="1" Color="{StaticResource Gray300}" />
+
+            <Label Text="Log" FontAttributes="Bold" />
+            <Label x:Name="LogLabel" FontSize="12" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

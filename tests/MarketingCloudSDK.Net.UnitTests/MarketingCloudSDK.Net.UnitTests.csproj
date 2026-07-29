@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Covers the platform-independent half of the façade: options defaults and validation
+    (including the required credentials), the one-shot initialization guard, the registration
+    editor's argument validation, and the neutral leg's PlatformNotSupportedException contract.
+    Plain net9.0, no device, no workloads.
+
+    The façade is referenced as an ordinary project: it carries a plain net8.0/net9.0/net10.0
+    neutral leg alongside its platform target frameworks, so this net9.0 test project resolves
+    the real neutral assembly - the same one a consumer's shared class library gets - rather than
+    re-compiling linked sources into itself. The platform halves (init listeners, requestSdk
+    editors, sfmc_* categories) need a real SDK to drive and are covered on-device instead; see
+    MarketingCloudSDK.Net.DeviceTests.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+
+    <!-- Directory.Build.props requires XML docs on public members; a xunit test class is public
+         only because xunit requires it. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <!--
+    Referencing the façade pulls its whole target-framework set into the restore graph, and
+    merely evaluating the android/ios legs needs the matching workloads installed. Restore walks
+    every leg of a referenced project regardless of what the reference asks for - neither
+    SetTargetFramework nor AdditionalProperties prunes it - so the lever is the global property
+    -p:SfmcNeutralOnly=true, which collapses the façade to its neutral legs (see
+    Directory.Build.props). CI passes it; locally either form works, plain `dotnet test` just
+    restores more.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../../src/MarketingCloudSDK.Net/MarketingCloudSDK.Net.csproj" />
+  </ItemGroup>
+
+</Project>

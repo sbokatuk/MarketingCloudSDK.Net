@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+	<application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true"></application>
+	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+	<uses-permission android:name="android.permission.INTERNET" />
+	<!--
+	  Android 13+ shows no notification without this runtime permission; declaring it here is
+	  what makes the page's Permissions.RequestAsync<Permissions.PostNotifications>() able to
+	  ask. A real push app also ships its Firebase google-services.json here - this sample does
+	  not commit one (credentials are runtime input only), so registration succeeds but no token
+	  arrives; see the README's push prerequisites.
+	-->
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+</manifest>

@@ -1,0 +1,87 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      The net10 band. MAUI 8 and 9 cannot resolve the AndroidX generation the MobilePush Android
+      binding's dependencies bring - the hard NU1107 recorded in
+      src/MarketingCloudSDK.Net.Maui/MarketingCloudSDK.Net.Maui.csproj, plus the Java-callable-
+      wrapper defect the binding repository's own sample documents - while MAUI 10 handles it.
+      That is why the façade's floor is net8 while this sample's is net10: a constraint on the
+      MAUI version this sample builds with, not on what consumers ship.
+    -->
+    <TargetFrameworks>net10.0-android36.0;net10.0-ios26.0</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MarketingCloudSDK.Net.Sample</RootNamespace>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <!-- See the note in src/Sfmc.Facade.props: a property of the AndroidX graph, not of this. -->
+    <NoWarn>$(NoWarn);NU1608</NoWarn>
+
+    <ApplicationTitle>MarketingCloudSDK.Net Sample</ApplicationTitle>
+    <ApplicationId>com.sbokatuk.mcnet.sample</ApplicationId>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+
+    <!-- The packages' own floors - iOS 12.2 (Swift runtime), Android API 26 (the .aar manifests). -->
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">12.2</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- App Icon -->
+    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
+
+    <!-- Splash Screen -->
+    <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
+
+    <!-- Images -->
+    <MauiImage Include="Resources\Images\*" />
+    <MauiImage Update="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" />
+
+    <!-- Custom Fonts -->
+    <MauiFont Include="Resources\Fonts\*" />
+
+    <!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
+    <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.2" />
+  </ItemGroup>
+
+  <!--
+    Consumes the packed MarketingCloudSDK.Net.Maui from ./artifacts rather than the projects,
+    exactly as a real app would - the façade arrives transitively through that package's exact
+    pin, so this is what checks both published packages are still usable the way the README
+    documents, with the platform bindings arriving through the façade's own dependency groups.
+    Run ./build/BuildNugets.sh first; pass -p:SfmcPackageVersion=... to point it at a specific
+    build. See NuGet.config for the local feed.
+  -->
+  <PropertyGroup>
+    <SfmcPackageVersion Condition=" '$(SfmcPackageVersion)' == '' ">$(VersionPrefix)</SfmcPackageVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MarketingCloudSDK.Net.Maui" Version="$(SfmcPackageVersion)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <!--
+      The 2026 AndroidX generation splits Compose.Runtime.Annotation into -Android (.aar) and
+      -Jvm (.jar) flavors, and the transitive graph resolves BOTH - each carrying the same
+      classes, which D8 refuses to dex (Type ... is defined multiple times). Keeping the package
+      in the graph but excluding its assets drops the duplicate .jar; Android apps want the
+      .android flavor. The same line belongs in any consuming app that hits JAVA0000 on
+      androidx.compose.runtime.annotation types - see the README's troubleshooting section.
+    -->
+    <PackageReference Include="Xamarin.AndroidX.Compose.Runtime.Annotation.Jvm" Version="1.9.5" ExcludeAssets="all" />
+  </ItemGroup>
+
+</Project>

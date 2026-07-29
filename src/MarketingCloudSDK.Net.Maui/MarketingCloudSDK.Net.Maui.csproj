@@ -1,0 +1,150 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    MAUI conveniences over MarketingCloudSDK.Net: the app-builder wiring point and the service
+    registration behind it. Deliberately thin - MobilePush at v11 needs no lifecycle wiring from
+    the app (the SDK observes the push token itself on both platforms), so the whole of what a
+    MAUI app needs from this package is one DI registration.
+
+    Separate from MarketingCloudSDK.Net on purpose. Everything here needs
+    Microsoft.Maui.Controls, and forcing that on a plain .NET for Android or .NET for iOS
+    consumer just to send push would be a poor trade.
+
+    This project deliberately does NOT import ../Sfmc.Facade.props: its target frameworks are
+    platform ones only (a MauiAppBuilder extension has no neutral leg to offer - the plain-TFM
+    story for shared code is the façade package's), and its two shared sources have no Platforms/
+    split to select. The pack assets and analyzer stance are restated below instead.
+  -->
+  <PropertyGroup>
+    <!--
+      NOT the façade's band lists, and the difference is a measured fact, not taste: the Android
+      set here is net10 only. MobilePush 11's binding graph resolves the 2026 AndroidX
+      generation, whose Lifecycle packages exact-range each other at 2.10.x, while MAUI 8/9's
+      Microsoft.Maui.Core carries floors inside the 2.9.x generation - two disjoint exact ranges,
+      so the net8/net9 android legs of this project fail restore outright with NU1107 (Version
+      conflict on Xamarin.AndroidX.Lifecycle.LiveData.Core), and even an app that force-pins its
+      way past that hits the Java-callable-wrapper defect the binding repository's own MAUI
+      sample records. MAUI 10 resolves the same graph natively, which is why that sample - and
+      this repository's - are net10. The iOS legs have no AndroidX in them and ship for all
+      three bands.
+
+      For a net8/net9 MAUI app that is iOS-only this package works as-is; a net8/net9 android
+      head referencing it fails restore with NU1202, which is the truthful early signal that the
+      combination does not exist upstream. The FAÇADE still ships all nine target frameworks -
+      plain (non-MAUI) .NET for Android apps on net8/net9 are fine - so such an app registers
+      the client with one AddSingleton line instead of this package.
+    -->
+    <SfmcMauiTargetFrameworks Condition=" '$(SfmcSdkBand)' == 'net9' ">net8.0-ios18.0;net9.0-ios18.0</SfmcMauiTargetFrameworks>
+    <SfmcMauiTargetFrameworks Condition=" '$(SfmcSdkBand)' == 'net10' ">net10.0-android36.0;net10.0-ios26.0</SfmcMauiTargetFrameworks>
+    <TargetFrameworks>$(SfmcMauiTargetFrameworks)</TargetFrameworks>
+    <RootNamespace>MarketingCloudSDK.Net.Maui</RootNamespace>
+
+    <!--
+      UseMauiCore rather than UseMaui: this is a library of extension methods, not an app, and
+      the full UseMaui brings in app-only targets (resource generation, splash screens) that have
+      nothing to do here. UseMauiEssentials because Essentials is where
+      Permissions.PostNotifications lives - the permission this package's documentation sends
+      Android 13+ apps to request.
+    -->
+    <UseMauiCore>true</UseMauiCore>
+    <UseMauiEssentials>true</UseMauiEssentials>
+    <SingleProject>true</SingleProject>
+    <!--
+      MA002: since .NET 8, UseMauiCore/UseMauiEssentials no longer implicitly pull in their
+      NuGet packages. Both come in transitively through the Microsoft.Maui.Controls reference
+      below regardless, so this only silences a validation warning, not a real missing
+      dependency.
+    -->
+    <SkipValidateMauiImplicitPackageReferences>true</SkipValidateMauiImplicitPackageReferences>
+
+    <!-- Same stance as src/Sfmc.Facade.props, for the same reasons. -->
+    <NoWarn>$(NoWarn);NU5104;NU1608</NoWarn>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+    <SupportedOSPlatformVersion>$(SfmcSupportedIosVersion)</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <SupportedOSPlatformVersion>$(SfmcSupportedAndroidVersion)</SupportedOSPlatformVersion>
+    <AndroidGenerateResourceDesigner>false</AndroidGenerateResourceDesigner>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      $(Version) is preferred - it reflects an explicit -p:Version=X override, e.g. a CI beta or
+      release build - but reading it here, mid-file, sees an empty value when no override was
+      passed: the SDK computes it from VersionPrefix/VersionSuffix in a target imported at the
+      very end of Sdk.targets, later in evaluation order than this PropertyGroup. The second line
+      recomputes the same fallback ourselves for that case.
+    -->
+    <SfmcFacadeDependencyVersion Condition=" '$(SfmcFacadeDependencyVersion)' == '' and '$(Version)' != '' ">$(Version)</SfmcFacadeDependencyVersion>
+    <SfmcFacadeDependencyVersion Condition=" '$(SfmcFacadeDependencyVersion)' == '' ">$(VersionPrefix)$(VersionSuffix)</SfmcFacadeDependencyVersion>
+  </PropertyGroup>
+
+  <!--
+    Deliberate per-band floors, not $(MauiVersion): the workload-provided property tracks
+    whatever the packing machine has installed, so the published package's dependency floor
+    would drift with CI runner images - and one value cannot serve every target framework
+    either, because each band's workload injects an implicit Microsoft.Maui.Core at its own
+    version and a Controls floor from another band trips NU1605 in this very project. These are
+    the oldest Controls of each line this package is built against; consumers on anything newer
+    resolve their own version.
+  -->
+  <PropertyGroup>
+    <SfmcMauiControlsVersion Condition="$(TargetFramework.StartsWith('net8.0'))">8.0.100</SfmcMauiControlsVersion>
+    <SfmcMauiControlsVersion Condition="$(TargetFramework.StartsWith('net9.0'))">9.0.30</SfmcMauiControlsVersion>
+    <SfmcMauiControlsVersion Condition="$(TargetFramework.StartsWith('net10.0'))">10.0.0</SfmcMauiControlsVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="$(SfmcMauiControlsVersion)" />
+    <!--
+      The façade, pinned EXACTLY at this repository's own version: the two packages release
+      together from one commit, and a floating minimum would let NuGet pair this thin layer with
+      a façade it was never built against.
+    -->
+    <PackageReference Include="MarketingCloudSDK.Net" Version="[$(SfmcFacadeDependencyVersion)]" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <!--
+      Restore aid, not a dependency - note both PrivateAssets (never enters this package's
+      nuspec) and ExcludeAssets (contributes nothing to the build). MAUI 10's own graph is
+      internally split across the AndroidX generation boundary: Microsoft.Maui.Essentials pulls
+      Activity 1.12.0, whose Lifecycle chain exact-ranges LiveData.Core at [2.10.0, 2.10.1),
+      while Microsoft.Maui.Core still floors Lifecycle.LiveData at 2.9.4, whose own range is
+      [2.9.4, 2.9.5). In an app, the full Controls closure gives NuGet a nearest path that picks
+      2.10.0 and the violated deeper range degrades to NU1608 (suppressed above, matching the
+      binding repositories) - the sibling binding's MAUI sample restores exactly so. This thin
+      UseMauiCore project has no such closure, the two rigid ranges meet at equal depth, and
+      restore fails hard with NU1107. Referencing the winner directly is NuGet's own documented
+      remedy; keeping it private means consumers' resolution - proven to work - is not second-
+      guessed by a pin this package has no business publishing.
+    -->
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core" Version="2.10.0" ExcludeAssets="all" PrivateAssets="all" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>MarketingCloudSDK.Net.Maui</PackageId>
+    <Title>.NET MAUI wiring for MarketingCloudSDK.Net</Title>
+    <Description>
+      Adds the app-builder and service-collection registration a .NET MAUI app needs to consume
+      MarketingCloudSDK.Net through dependency injection: UseMarketingCloud/AddMarketingCloud
+      register IMarketingCloudClient as a singleton alongside the options. Add
+      MarketingCloudSDK.Net on its own if you are not using MAUI.
+    </Description>
+    <PackageTags>salesforce;marketingcloud;mobilepush;sfmc;push;notifications;maui;android;ios</PackageTags>
+  </PropertyGroup>
+
+  <!-- Same pack assets, same MIT-only reasoning, as src/Sfmc.Facade.props. -->
+  <ItemGroup>
+    <None Include="../../build/icon.png" Pack="true" PackagePath="" Visible="false" />
+    <None Include="../../README.md" Pack="true" PackagePath="" Visible="false" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="licenses/" Visible="false" />
+  </ItemGroup>
+
+</Project>

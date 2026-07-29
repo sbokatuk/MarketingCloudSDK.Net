@@ -1,0 +1,249 @@
+name: release
+
+on:
+  # Dispatched as well as pushed to: auto-release.yml creates the tag with GITHUB_TOKEN when a
+  # release note is merged, and a tag pushed with that token deliberately does not trigger
+  # `on: push: tags`. workflow_dispatch is documented as an exception that always creates a run.
+  # Dispatched at the tag's ref, so github.ref_name below is the tag either way.
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # The release path packs and publishes without re-running validate/sample/e2e, on the grounds
+  # that the tagged commit already went through them on its pull request. That reasoning only
+  # holds if the commit is genuinely on the default branch — a tag cut from an unmerged branch,
+  # or from a commit force-pushed away since, would ship having been verified by nothing. Two
+  # cheap ubuntu minutes to make the assumption explicit rather than implicit.
+  guard:
+    name: verify the tag is on the default branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refuse a tag that never went through a pull request
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          # A tag push checks out the tag, and the default branch's ref is not necessarily among
+          # the refs fetched with it, so ask for it by name before testing ancestry.
+          git fetch --no-tags --quiet origin \
+            "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/${DEFAULT_BRANCH}"; then
+            echo "::error::${GITHUB_REF_NAME} points at ${GITHUB_SHA}, which is not an ancestor of ${DEFAULT_BRANCH}. Releases skip the test suites because the tagged commit was verified on its pull request; this commit was not. Merge it first, then re-tag."
+            exit 1
+          fi
+
+          echo "${GITHUB_REF_NAME} -> ${GITHUB_SHA} is on ${DEFAULT_BRANCH}" >> "$GITHUB_STEP_SUMMARY"
+
+  version:
+    name: resolve release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+      ios-version: ${{ steps.resolve.outputs.ios-version }}
+      android-version: ${{ steps.resolve.outputs.android-version }}
+      core-version: ${{ steps.resolve.outputs.core-version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: resolve
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if ! printf '%s' "${version}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::tag '${GITHUB_REF_NAME}' does not look like a version (expected e.g. v11.0.2.1)"
+            exit 1
+          fi
+
+          # Unlike the two binding repositories, the tag does *not* select which native SDK is
+          # bound: this repository binds nothing, and which packages it compiles against is
+          # pinned in Directory.Build.props. Releasing an older line means checking out that
+          # commit and tagging it, not tagging a different version on this one - so the versions
+          # reported in the notes are read from the working tree rather than derived from the tag.
+          ios=$(sed -n 's:.*<SfmcIosPackageVersion>\(.*\)</SfmcIosPackageVersion>.*:\1:p' Directory.Build.props | head -1)
+          android=$(sed -n 's:.*<SfmcAndroidPackageVersion>\(.*\)</SfmcAndroidPackageVersion>.*:\1:p' Directory.Build.props | head -1)
+          core=$(sed -n 's:.*<SfmcCorePackageVersion>\(.*\)</SfmcCorePackageVersion>.*:\1:p' Directory.Build.props | head -1)
+          if [ -z "${ios}" ] || [ -z "${android}" ] || [ -z "${core}" ]; then
+            echo "::error::could not read the dependency package versions from Directory.Build.props"
+            exit 1
+          fi
+
+          expected=$(sed -n 's:.*<SfmcNativeVersion>\(.*\)</SfmcNativeVersion>.*:\1:p' Directory.Build.props | head -1).$(sed -n 's:.*<SfmcBindingRevision>\(.*\)</SfmcBindingRevision>.*:\1:p' Directory.Build.props | head -1)
+          if [ "${version%%-*}" != "${expected}" ]; then
+            # A tag that disagrees with the working tree would publish packages whose version
+            # says one thing and whose pinned dependencies say another, and nothing downstream
+            # could tell.
+            echo "::error::tag '${GITHUB_REF_NAME}' does not match Directory.Build.props (${expected}). Bump the props or move the tag."
+            exit 1
+          fi
+
+          case "${version}" in
+            *-*) prerelease=true ;;
+            *)   prerelease=false ;;
+          esac
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
+          echo "ios-version=${ios}" >> "$GITHUB_OUTPUT"
+          echo "android-version=${android}" >> "$GITHUB_OUTPUT"
+          echo "core-version=${core}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${version} (prerelease=${prerelease})" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: build
+    needs: [guard, version]
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      # Verification already happened on this commit's pull request, and the guard job above
+      # proved the tag points at that commit. A release packs and publishes, nothing more.
+      verify: false
+
+  publish:
+    name: publish to nuget.org and create release
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    # Must match the Environment on the nuget.org trusted publishing policy for this workflow.
+    environment: nuget.org
+    permissions:
+      # contents: write creates the GitHub release; id-token: write lets the job request the OIDC
+      # token that nuget.org exchanges for a short-lived API key. Without the latter the token
+      # request fails silently and the login step gets no key.
+      contents: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Needed to find the previous tag when generating the changelog.
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts
+
+      # nuget.org is published to first: a GitHub release linking to packages that failed to
+      # upload would be worse than a release created a moment late.
+      # Deliberately immediately before the push: the issued key is valid for one hour, and each
+      # OIDC token can be exchanged exactly once.
+      - name: Authenticate to nuget.org
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to nuget.org
+        run: |
+          dotnet nuget push "artifacts/*.nupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --skip-duplicate
+
+      - name: Compose release notes
+        env:
+          IOS_VERSION: ${{ needs.version.outputs.ios-version }}
+          ANDROID_VERSION: ${{ needs.version.outputs.android-version }}
+          CORE_VERSION: ${{ needs.version.outputs.core-version }}
+        run: |
+          previous=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+
+          # A curated docs/release-notes/<version>.md replaces the generated commit list when one
+          # exists. The second lookup drops the prerelease suffix, so v11.0.2.1-beta.2 reuses the
+          # notes written for 11.0.2.1 rather than silently falling back to raw commit subjects.
+          notes="docs/release-notes/${VERSION}.md"
+          [ -f "${notes}" ] || notes="docs/release-notes/${VERSION%%-*}.md"
+
+          {
+            if [ -f "${notes}" ]; then
+              echo "==> using curated notes from ${notes}" >&2
+              cat "${notes}"
+            else
+              echo "## What's changed"
+              echo
+              if [ -n "${previous}" ]; then
+                git log --no-merges --pretty='- %s (%h)' "${previous}..${GITHUB_REF_NAME}"
+              else
+                echo "Initial release."
+              fi
+            fi
+            echo
+            if [ -n "${previous}" ]; then
+              echo "**Full changelog**: ${{ github.server_url }}/${{ github.repository }}/compare/${previous}...${GITHUB_REF_NAME}"
+              echo
+            fi
+
+            echo "## Packages"
+            echo
+            echo "Built against [\`MarketingCloudSDK.Net.iOS ${IOS_VERSION}\`](https://github.com/sbokatuk/MarketingCloudSDK.Net.iOS/releases/tag/v${IOS_VERSION}), [\`MarketingCloudSDK.Net.Android ${ANDROID_VERSION}\`](https://github.com/sbokatuk/MarketingCloudSDK.Net.Android/releases/tag/v${ANDROID_VERSION}) and [\`SFMCSDK.Net ${CORE_VERSION}\`](https://github.com/sbokatuk/SFMCSDK.Net/releases/tag/v${CORE_VERSION}) — MarketingCloudSDK \`${IOS_VERSION%.*}\` on iOS and marketingcloudsdk \`${ANDROID_VERSION%.*}\` on Android."
+            echo
+            echo "> The version names the *iOS* line, because Salesforce releases the two native"
+            echo "> SDKs on separate cadences and they never share a version number. The fourth"
+            echo "> component is this repository's own revision."
+            echo
+            echo "| Package | Target frameworks | NuGet |"
+            echo "| --- | --- | --- |"
+            # The id list comes from build/packages.tsv; the target frameworks come from the
+            # packed .nupkg itself - the artifact being published, already downloaded above - so
+            # the notes cannot list a target framework the merge step dropped.
+            while IFS=$'\t' read -r id _heads _rest; do
+              case "${id}" in ''|\#*) continue ;; esac
+              pkg="artifacts/${id}.${VERSION}.nupkg"
+              if [ ! -f "${pkg}" ]; then
+                echo "::error::release notes: ${pkg} is not among the built artifacts"
+                exit 1
+              fi
+              tfms=$(unzip -l "${pkg}" \
+                | grep -oE 'lib/[^/ ]+/' | sed -E 's:^lib/::; s:/$::' | sort -uV \
+                | awk 'BEGIN { sep="" } { printf "%s`%s`", sep, $0; sep=", " } END { print "" }')
+              if [ -z "${tfms}" ]; then
+                echo "::error::release notes: ${pkg} contains no lib/<tfm>/ assets"
+                exit 1
+              fi
+              echo "| \`${id}\` | ${tfms} | [${VERSION}](https://www.nuget.org/packages/${id}/${VERSION}) |"
+            done < build/packages.tsv
+            echo
+            echo "\`\`\`"
+            echo "dotnet add package MarketingCloudSDK.Net --version ${VERSION}"
+            echo "\`\`\`"
+            echo
+            echo "## Licensing"
+            echo
+            echo "The code in this repository is MIT, and that is both packages entirely. They"
+            echo "depend on MarketingCloudSDK.Net.Android and MarketingCloudSDK.Net.iOS, whose"
+            echo "packages ship native MobilePush artifacts built by Salesforce; each of those"
+            echo "declares \`MIT AND BSD-3-Clause\` and ships both texts under \`licenses/\`."
+          } > release-notes.md
+
+          cat release-notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The packages themselves are not attached: nuget.org is the distribution channel, and
+          # the notes link to every published package instead.
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${VERSION}" \
+            --notes-file release-notes.md \
+            ${{ needs.version.outputs.prerelease == 'true' && '--prerelease' || '' }}
