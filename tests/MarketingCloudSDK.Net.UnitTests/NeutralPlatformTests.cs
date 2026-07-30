@@ -90,4 +90,41 @@ public class NeutralPlatformTests
 
         AssertNamesThePlatformHeads(error);
     }
+
+    [Fact]
+    public void TrackCustomEvent_throws_the_composed_core_facades_neutral_contract()
+    {
+        // Like Identity, events are delegated to SFMCSDK.Net - so this is that package's neutral
+        // contract surfacing through this façade, and the same helper holds it to naming the heads.
+        var error = Assert.Throws<PlatformNotSupportedException>(
+            () => new MarketingCloudClient().TrackCustomEvent("checkout_started"));
+
+        AssertNamesThePlatformHeads(error);
+    }
+
+    [Fact]
+    public void IsSupported_and_IsInitialized_answer_instead_of_throwing()
+    {
+        // The two members that must never throw: they are what shared code branches on before
+        // touching anything else, and a guard that needs its own guard is not a guard. This is the
+        // whole contract - if either of these ever starts throwing on a neutral head, every
+        // documented "check IsSupported first" pattern breaks at once.
+        var client = new MarketingCloudClient();
+
+        Assert.False(client.IsSupported);
+        Assert.False(client.IsInitialized);
+    }
+
+    [Fact]
+    public async Task IsInitialized_stays_false_when_initialization_throws()
+    {
+        var client = new MarketingCloudClient();
+
+        await Assert.ThrowsAsync<PlatformNotSupportedException>(
+            () => client.InitializeAsync(MarketingCloudOptionsTests.Valid()));
+
+        // The one-shot claim is taken (the guard protects a native SDK that may be mid-configure),
+        // but nothing came up - so the status flag and the guard deliberately disagree here.
+        Assert.False(client.IsInitialized);
+    }
 }

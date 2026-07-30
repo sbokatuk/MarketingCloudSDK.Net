@@ -59,13 +59,6 @@ BenchmarkDotNet.Artifacts/
 # .NET Core
 project.lock.json
 project.fragment.lock.json
-# Ignore the packages, but keep the directory itself: NuGet.config declares ./artifacts as a
-# package source, and restore fails with NU1301 if a local source does not exist. The pattern
-# must exclude the directory's *contents* rather than the directory - git cannot re-include a
-# file whose parent directory is excluded, which silently makes the negation below a no-op.
-artifacts/*
-!artifacts/.gitkeep
-
 # StyleCop
 StyleCopReport.xml
 
@@ -357,7 +350,9 @@ MigrationBackup/
 # Packed output. artifacts/ itself is a NuGet source declared in NuGet.config, so the directory
 # has to survive a clean checkout even though nothing in it does. Nothing native lives anywhere
 # in this repository - the platform binding packages arrive from nuget.org (or from here, packed
-# by the sibling repositories) - so there is no /libs to ignore.
+# by the sibling repositories) - so there is no /libs to ignore. The pattern must exclude the
+# directory's *contents* rather than the directory: git cannot re-include a file whose parent
+# directory is excluded, which would silently make the negation below a no-op.
 artifacts/*
 !artifacts/.gitkeep
 

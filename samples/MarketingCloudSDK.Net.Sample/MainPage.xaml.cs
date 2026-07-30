@@ -64,6 +64,7 @@ public partial class MainPage : ContentPage
             ContactKeyButton.IsEnabled = true;
             TagEntry.IsEnabled = true;
             TagButton.IsEnabled = true;
+            EventButton.IsEnabled = true;
             RegistrationButton.IsEnabled = true;
         }
         catch (Exception exception)
@@ -116,12 +117,28 @@ public partial class MainPage : ContentPage
         }
     }
 
+    private void OnTrackEventClicked(object? sender, EventArgs e)
+    {
+        // Custom events belong to the SFMC SDK core too (same move as identity at v11), and the
+        // façade forwards them - so an app driving MobilePush never has to reach for a second
+        // client to send one. String attribute values only: that is the shape both platforms agree
+        // on. Fire-and-forget, like identity.
+        _sdk.TrackCustomEvent("sample_button_tapped", new Dictionary<string, string>
+        {
+            ["source"] = "MarketingCloudSDK.Net.Sample",
+        });
+
+        AppendLog("Custom event 'sample_button_tapped' tracked.");
+    }
+
     private void OnShowRegistrationClicked(object? sender, EventArgs e)
     {
         // Reads answer from the SDK's local registration record; null is a legal answer
         // (nothing set yet, no token yet - and PushToken is documented null on iOS, where v11
         // exposes no APNs-token read).
         RegistrationLabel.Text =
+            $"IsSupported: {_sdk.IsSupported}\n" +
+            $"IsInitialized: {_sdk.IsInitialized}\n" +
             $"ContactKey: {_sdk.Registration.ContactKey ?? "(null)"}\n" +
             $"DeviceId: {_sdk.Registration.DeviceId ?? "(null)"}\n" +
             $"PushToken: {_sdk.Registration.PushToken ?? "(null)"}\n" +

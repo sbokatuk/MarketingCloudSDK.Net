@@ -59,4 +59,26 @@ public static class AppBuilderExtensions
         builder.Services.AddMarketingCloud(options);
         return builder;
     }
+
+    /// <summary>
+    /// Registers Marketing Cloud MobilePush with the app without options, for credentials that are
+    /// not known at composition time - the app supplies them to
+    /// <see cref="IMarketingCloudClient.InitializeAsync"/> later.
+    /// </summary>
+    /// <remarks>
+    /// Everything the options overload documents applies here too; the only difference is that no
+    /// <see cref="MarketingCloudOptions"/> is registered, because there is none yet. Use it when
+    /// the tenant comes from a signed-in user, a runtime prompt (as this repository's sample does)
+    /// or anywhere else the composition root genuinely cannot know it.
+    /// </remarks>
+    /// <param name="builder">The MAUI app builder.</param>
+    /// <returns><paramref name="builder"/>, for chaining.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+    public static MauiAppBuilder UseMarketingCloud(this MauiAppBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.Services.AddMarketingCloud();
+        return builder;
+    }
 }

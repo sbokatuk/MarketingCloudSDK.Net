@@ -263,6 +263,87 @@ public class PackageLayoutTests
         }
     }
 
+    /// <summary>
+    /// The three packages this façade pins must agree on the platform bindings UNDERNEATH them:
+    /// MarketingCloudSDK.Net.Android and the SFMCSDK.Net umbrella both bring in
+    /// SFMCSDK.Net.Android, and MarketingCloudSDK.Net.iOS and SFMCSDK.Net both bring in
+    /// SFMCSDK.Net.iOS. A disagreement is not cosmetic: the umbrella pins its core binding with an
+    /// exact range, so a MobilePush binding built against a different revision produces NU1107 in
+    /// every consuming app - or, where the ranges happen to overlap, a silent downgrade.
+    /// </summary>
+    /// <remarks>
+    /// This was documented in a csproj comment and asserted nowhere, which is how the two lines
+    /// drifted apart once already (the umbrella re-pinned its iOS binding to 4.0.1.2 while the
+    /// MobilePush binding still declared 4.0.1.1). Reading the dependency packages' own nuspecs is
+    /// the only way to see it from here: this repository's nuspec shows what it asks for, not what
+    /// its dependencies ask for.
+    /// </remarks>
+    [Theory]
+    [InlineData("MarketingCloudSDK.Net.Android", "SFMCSDK.Net.Android")]
+    [InlineData("MarketingCloudSDK.Net.iOS", "SFMCSDK.Net.iOS")]
+    public void The_mobile_push_binding_and_the_core_umbrella_agree_on_the_core_binding(
+        string mobilePushBinding, string coreBinding)
+    {
+        var mobilePushVersion = mobilePushBinding == "MarketingCloudSDK.Net.Android"
+            ? Packages.AndroidBindingVersion
+            : Packages.IosBindingVersion;
+
+        var throughMobilePush = ResolvedDependencyVersions(mobilePushBinding, mobilePushVersion, coreBinding);
+        var throughCoreUmbrella = ResolvedDependencyVersions("SFMCSDK.Net", Packages.CoreUmbrellaVersion, coreBinding);
+
+        Assert.NotEmpty(throughMobilePush);
+        Assert.NotEmpty(throughCoreUmbrella);
+
+        // Bare versions are floors and bracketed ones are exact - compared as written, because the
+        // MobilePush Android binding deliberately uses a bare version (the .NET Android SDK's Java
+        // dependency verification cannot parse ranges) while the umbrellas use exact ranges. What
+        // must match is the version itself.
+        var mobilePushPins = throughMobilePush.Select(Unbracket).Distinct().ToArray();
+        var umbrellaPins = throughCoreUmbrella.Select(Unbracket).Distinct().ToArray();
+
+        Assert.Equal(umbrellaPins.Order(), mobilePushPins.Order());
+    }
+
+    /// <summary>
+    /// Every version <paramref name="dependencyId"/> is declared at across
+    /// <paramref name="packageId"/>'s dependency groups, read from the package as restored into the
+    /// NuGet global-packages folder.
+    /// </summary>
+    private static string[] ResolvedDependencyVersions(string packageId, string version, string dependencyId)
+    {
+        var nuspec = Path.Combine(
+            GlobalPackagesFolder, packageId.ToLowerInvariant(), version, $"{packageId.ToLowerInvariant()}.nuspec");
+
+        if (!File.Exists(nuspec))
+        {
+            throw new FileNotFoundException(
+                $"'{nuspec}' does not exist. The dependency packages are read from the NuGet " +
+                "global-packages folder, so this test needs a completed restore of this " +
+                "repository (dotnet restore) - and the version must be the one Directory.Build.props pins.",
+                nuspec);
+        }
+
+        var document = XDocument.Parse(File.ReadAllText(nuspec));
+        var ns = document.Root!.GetDefaultNamespace();
+
+        return [.. document
+            .Descendants(ns + "dependency")
+            .Where(dependency => dependency.Attribute("id")?.Value == dependencyId)
+            .Select(dependency => dependency.Attribute("version")!.Value)];
+    }
+
+    private static string Unbracket(string version) => version.Trim('[', ']', '(', ')');
+
+    /// <summary>
+    /// The NuGet global-packages folder. NUGET_PACKAGES wins where CI sets it; otherwise the
+    /// per-user default.
+    /// </summary>
+    private static string GlobalPackagesFolder =>
+        Environment.GetEnvironmentVariable("NUGET_PACKAGES") is { Length: > 0 } configured
+            ? configured
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages");
+
     /// <summary>Maps each target framework to the dependencies its nuspec group declares.</summary>
     private static Dictionary<string, IReadOnlyList<(string Id, string Version)>> DependencyGroups(string nuspec)
     {

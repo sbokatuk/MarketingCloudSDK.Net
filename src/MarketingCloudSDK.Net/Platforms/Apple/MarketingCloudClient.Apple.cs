@@ -71,9 +71,19 @@ public sealed partial class MarketingCloudClient
         }
         catch (TimeoutException)
         {
-            // The verified path described above: no conclusion is not no initialization. The
-            // state JSON is the same oracle the binding repository's device tests read after
-            // the same wait.
+            // The verified path described above: no conclusion is not no initialization.
+            //
+            // What this oracle does and does not prove, measured rather than assumed (see the
+            // binding repository's committed simulator-tests.log): the core reports a module
+            // roster, and the pushfeature entry is present there whether or not a push config was
+            // ever supplied - in an unprovisioned simulator EVERY module reads
+            // "status": "inactive", "version": "unavailable", including this one. So presence
+            // means "the core is up and its module roster is intact", not "the module concluded".
+            // It is deliberately the weak check: the strong one does not exist on this platform
+            // (nothing in either state JSON reflects the configuration we passed), and failing
+            // here instead would refuse to initialize on exactly the unprovisioned tenants and
+            // simulators this fallback exists for. A caller that needs the difference reads
+            // DiagnosticState, where the inactive statuses are visible verbatim.
             var state = SFMCSdk.State;
             if (state is not null && state.Contains("pushfeature", StringComparison.OrdinalIgnoreCase))
             {
@@ -83,6 +93,8 @@ public sealed partial class MarketingCloudClient
             throw;
         }
     }
+
+    private static partial bool SupportedCore() => true;
 
     /// <remarks>
     /// The read-side category selectors on <c>MobilePushSDK.sharedInstance</c>; each answers

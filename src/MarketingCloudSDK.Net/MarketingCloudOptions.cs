@@ -23,6 +23,14 @@ namespace MarketingCloudSDK.Net;
 public sealed record MarketingCloudOptions
 {
     /// <summary>
+    /// The default <see cref="InitializationTimeout"/>, and the bound
+    /// <see cref="IMarketingCloudRegistration.EditAsync"/> uses for its own native wait before
+    /// <see cref="MarketingCloudClient.InitializeAsync"/> has supplied one. Internal: it is the
+    /// same 30 seconds the property documents, named once so the two cannot drift apart.
+    /// </summary>
+    internal static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
     /// The MobilePush application id (a GUID-shaped string from MobilePush app administration).
     /// Must not be blank.
     /// </summary>
@@ -76,7 +84,7 @@ public sealed record MarketingCloudOptions
     /// back to inspecting the SDK's state; see
     /// <see cref="IMarketingCloudClient.InitializeAsync"/>.
     /// </remarks>
-    public TimeSpan InitializationTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    public TimeSpan InitializationTimeout { get; init; } = DefaultTimeout;
 
     /// <summary>
     /// Native SDK log verbosity, applied immediately before initialization so the initialization

@@ -41,6 +41,11 @@
                     IsEnabled="False"
                     Clicked="OnAddTagClicked" />
 
+            <Button x:Name="EventButton"
+                    Text="Track custom event"
+                    IsEnabled="False"
+                    Clicked="OnTrackEventClicked" />
+
             <Button x:Name="RegistrationButton"
                     Text="Show registration"
                     IsEnabled="False"
