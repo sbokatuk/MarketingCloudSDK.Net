@@ -26,7 +26,11 @@
 #            NuGet package id
 #   confirm  download URL template with {version}, or "-" to derive it from the locator
 #
-# group	label	kind	pin	locator	confirm
-MobilePush Android	MarketingCloudSDK.Net.Android	nuget	SfmcAndroidPackageVersion	MarketingCloudSDK.Net.Android	-
-MobilePush iOS	MarketingCloudSDK.Net.iOS	nuget	SfmcIosPackageVersion	MarketingCloudSDK.Net.iOS	-
-SFMCSDK core	SFMCSDK.Net	nuget	SfmcCorePackageVersion	SFMCSDK.Net	-
+#   source   owner/repo publishing the component - optional, and only meaningful on nuget
+#            rows, where the drift finding links that repository's release notes for the
+#            version it reports
+#
+# group	label	kind	pin	locator	confirm	source
+MobilePush Android	MarketingCloudSDK.Net.Android	nuget	SfmcAndroidPackageVersion	MarketingCloudSDK.Net.Android	-	sbokatuk/MarketingCloudSDK.Net.Android
+MobilePush iOS	MarketingCloudSDK.Net.iOS	nuget	SfmcIosPackageVersion	MarketingCloudSDK.Net.iOS	-	sbokatuk/MarketingCloudSDK.Net.iOS
+SFMCSDK core	SFMCSDK.Net	nuget	SfmcCorePackageVersion	SFMCSDK.Net	-	sbokatuk/SFMCSDK.Net
