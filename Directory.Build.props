@@ -54,7 +54,7 @@
       them literal.
     -->
     <SfmcAndroidPackageVersion>11.0.1.2</SfmcAndroidPackageVersion>
-    <SfmcIosPackageVersion>11.0.2.2-beta.4.6</SfmcIosPackageVersion>
+    <SfmcIosPackageVersion>11.0.2.2</SfmcIosPackageVersion>
     <SfmcCorePackageVersion>4.0.1.1</SfmcCorePackageVersion>
   </PropertyGroup>
 

@@ -158,9 +158,9 @@ marketingcloudsdk **11.0.1**.
 
 | MarketingCloudSDK.Net | MarketingCloudSDK (iOS, native) | marketingcloudsdk (Android, native) | MarketingCloudSDK.Net.iOS | MarketingCloudSDK.Net.Android | SFMCSDK.Net |
 | --- | --- | --- | --- | --- | --- |
-| 11.0.2.2 | 11.0.2 | 11.0.1 | 11.0.2.2-beta.4.6 | 11.0.1.2 | 4.0.1.1 |
+| 11.0.2.2 | 11.0.2 | 11.0.1 | 11.0.2.2 | 11.0.1.2 | 4.0.1.1 |
 
-The dependencies are pinned **exactly** (`[11.0.2.2-beta.4.6]` / `[11.0.1.2]` / `[4.0.1.1]`), not
+The dependencies are pinned **exactly** (`[11.0.2.2]` / `[11.0.1.2]` / `[4.0.1.1]`), not
 floored: the façade calls each binding's hand-written convenience layer — the `Action` overloads
 of `Init`/`RequestSdk` on Android, the hand-maintained `sfmc_*` category surface on iOS — and
 those carry no compatibility promise across binding revisions. A newer binding is consumed by
@@ -194,7 +194,7 @@ the same app can still consume the façade directly with one `AddSingleton` line
 from 12.2), **Android API 26** (the `.aar` manifests' own floor).
 
 The platform heads pull `MarketingCloudSDK.Net.Android 11.0.1.2` /
-`MarketingCloudSDK.Net.iOS 11.0.2.2-beta.4.6` transitively — and with them the whole native graph
+`MarketingCloudSDK.Net.iOS 11.0.2.2` transitively — and with them the whole native graph
 (Firebase Messaging and AndroidX on Android; the AppGroupSDK payload and the SFMC SDK core on
 iOS). Every head, the neutral ones included, also pulls `SFMCSDK.Net`, whose `ISfmcIdentity` is
 part of this façade's public surface. Apps reference only this package unless they want the raw
