@@ -37,6 +37,16 @@ public static class SmokeTests
             // Debug logging on, so a native failure under investigation is already captured in
             // the platform log the runner uploads.
             //
+            // "Shaped like real ones" is load-bearing on Android, and more narrowly than it looks:
+            // MarketingCloudConfig.Builder.build() runs java.util.UUID validation on the
+            // application id and rejects anything that is not a version-4 variant-1 UUID, so the
+            // nil UUID (all zeros) fails with "The applicationId is not a valid UUID" from inside
+            // the builder - before the SDK is reached, before any callback, and therefore before
+            // the timeout below can mean anything. Hence the 4 and the 8 in the third and fourth
+            // groups. The access token is padded to the 24 characters a real one carries for the
+            // same reason. iOS validates neither, which is why this only ever failed on one
+            // platform; the sibling MarketingCloudSDK.Net.Android suite learned it first.
+            //
             // The timeout is doing platform-specific work, per the façade's documented
             // semantics. On Android the init listener fires inside it - the binding
             // repository's emulator suite sees it fire with these same dummy values under a
@@ -48,8 +58,8 @@ public static class SmokeTests
             // runner scripts' verdict budget (450s of logcat polling, an open pty stream).
             await Client.InitializeAsync(new MarketingCloudOptions
             {
-                ApplicationId = "00000000-0000-0000-0000-000000000000",
-                AccessToken = "devicetests-dummy-token",
+                ApplicationId = "00000000-0000-4000-8000-000000000000",
+                AccessToken = "devicetests-dummy-token0",
                 ServerUrl = "https://localhost.invalid/",
                 Mid = "000000000",
                 LogLevel = SfmcLogLevel.Debug,
@@ -114,8 +124,8 @@ public static class SmokeTests
             {
                 await Client.InitializeAsync(new MarketingCloudOptions
                 {
-                    ApplicationId = "00000000-0000-0000-0000-000000000000",
-                    AccessToken = "devicetests-dummy-token",
+                    ApplicationId = "00000000-0000-4000-8000-000000000000",
+                    AccessToken = "devicetests-dummy-token0",
                     ServerUrl = "https://localhost.invalid/",
                     Mid = "000000000",
                 });
