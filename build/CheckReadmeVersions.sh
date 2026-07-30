@@ -50,16 +50,16 @@ for pin in $(grep -oE 'Include="(MarketingCloudSDK|SFMCSDK)[^"]*" +Version="[0-9
   fi
 done
 
-for token in $(grep -oE 'run-(simulator|emulator)-tests\.sh +[0-9][0-9.]*' "$readme" | grep -oE '[0-9][0-9.]*$'); do
+for token in $(grep -oE 'run-(simulator|emulator)-tests\.sh +[0-9][0-9.]*(-[0-9A-Za-z.-]+)?' "$readme" | grep -oE '[0-9][0-9.]*(-[0-9A-Za-z.-]+)?$'); do
   if [ "$token" != "$version" ]; then
     echo "README runs the device checks at $token, but the current version is $version" >&2
     bad=1
   fi
 done
 
-for mention in $(grep -oE 'MarketingCloudSDK\.Net\.(iOS|Android) +[0-9][0-9.]*' "$readme"); do
+for mention in $(grep -oE 'MarketingCloudSDK\.Net\.(iOS|Android) +[0-9][0-9.]*(-[0-9A-Za-z.-]+)?' "$readme"); do
   repo=$(printf '%s' "$mention" | grep -oE 'iOS|Android')
-  ver=$(printf '%s' "$mention" | grep -oE '[0-9][0-9.]*$')
+  ver=$(printf '%s' "$mention" | grep -oE '[0-9][0-9.]*(-[0-9A-Za-z.-]+)?$')
   case "$repo" in
     iOS)     expected="$ios_version" ;;
     Android) expected="$android_version" ;;

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <!--
-      Package versions are <MarketingCloudSDK iOS version>.<binding revision>, e.g. 11.0.2.1 - the
+      Package versions are <MarketingCloudSDK iOS version>.<binding revision>, e.g. 11.0.2.2 - the
       same scheme the two platform binding repositories use, and deliberately the *iOS* line.
 
       This repository binds nothing itself. It is a cross-platform façade over two independently
@@ -25,7 +25,7 @@
       literal values on their own lines rather than composing them from other properties.
     -->
     <SfmcNativeVersion>11.0.2</SfmcNativeVersion>
-    <SfmcBindingRevision>1</SfmcBindingRevision>
+    <SfmcBindingRevision>2</SfmcBindingRevision>
     <VersionPrefix>$(SfmcNativeVersion).$(SfmcBindingRevision)</VersionPrefix>
 
     <!--
@@ -53,8 +53,8 @@
       Scripts sed-parse these properties by name (CheckReadmeVersions.sh, release.yml); keep
       them literal.
     -->
-    <SfmcAndroidPackageVersion>11.0.1.1</SfmcAndroidPackageVersion>
-    <SfmcIosPackageVersion>11.0.2.1</SfmcIosPackageVersion>
+    <SfmcAndroidPackageVersion>11.0.1.2</SfmcAndroidPackageVersion>
+    <SfmcIosPackageVersion>11.0.2.2-beta.4.6</SfmcIosPackageVersion>
     <SfmcCorePackageVersion>4.0.1.1</SfmcCorePackageVersion>
   </PropertyGroup>
 
