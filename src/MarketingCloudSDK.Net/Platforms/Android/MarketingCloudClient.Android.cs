@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Com.Salesforce.Marketingcloud;
 using Com.Salesforce.Marketingcloud.Sfmcsdk;
 using Com.Salesforce.Marketingcloud.Sfmcsdk.Components.Logging;
@@ -19,14 +20,28 @@ namespace MarketingCloudSDK.Net;
 public sealed partial class MarketingCloudClient
 {
     /// <remarks>
-    /// <c>MarketingCloudSdk.init</c> takes the application <c>Context</c> and reports the
-    /// terminal <c>InitializationStatus</c> through a listener; the binding's Additions supply
-    /// the <see cref="Action{T}"/> overload used here, and v11's compat entry point brings the
-    /// SFMC SDK core up underneath - which is what makes the composed core identity work without
-    /// this façade ever configuring the core itself. <c>Application.Context</c> rather than a
-    /// caller-supplied one, deliberately: the SDK outlives any Activity, holding a shorter-lived
-    /// Context would leak it, and it is what keeps the cross-platform surface free of a
-    /// parameter only one platform could use.
+    /// <para>
+    /// Configuration goes through the SFMC SDK core, not the MobilePush module: at v11
+    /// <c>MarketingCloudConfig</c> IS an <c>EngagementModuleConfig</c>, and
+    /// <c>SFMCSdk.configure</c> is what supplies the module the <c>SFMCSdkComponents</c> it
+    /// initializes with. <c>MarketingCloudSdk.init</c> - the pre-Unified-SDK entry point this
+    /// façade used before - still exists and still calls its listener back, but it initializes
+    /// nothing: it hands the engagement module a null components bag and dies inside
+    /// <c>getEncryptionManager</c>, leaving <c>requestSdk</c> to never fire. That failure mode is
+    /// silent through a listener-shaped wait, which is exactly why it took an emulator run to
+    /// catch; the sibling MarketingCloudSDK.Net.Android repository's own device tests and sample
+    /// configure the same way this does (see its 11.0.1.2 release notes).
+    /// </para>
+    /// <para>
+    /// Bringing the core up here is also what makes the composed core identity work without this
+    /// façade ever calling the core façade's own <c>InitializeAsync</c> - that would configure the
+    /// core a second time with an empty module set, which upstream forbids.
+    /// </para>
+    /// <para>
+    /// <c>Application.Context</c> rather than a caller-supplied one, deliberately: the SDK
+    /// outlives any Activity, holding a shorter-lived Context would leak it, and it is what keeps
+    /// the cross-platform surface free of a parameter only one platform could use.
+    /// </para>
     /// </remarks>
     private async partial Task InitializeCore(MarketingCloudOptions options, CancellationToken cancellationToken)
     {
@@ -45,18 +60,26 @@ public sealed partial class MarketingCloudClient
             .SetDelayRegistrationUntilContactKeyIsSet(options.DelayRegistrationUntilContactKeySet)
             .Build(global::Android.App.Application.Context);
 
-        // The listener fires exactly once with the terminal InitializationStatus. Its parameter
+        var modules = new SFMCSdkModuleConfig.Builder
+        {
+            EngagementModuleConfig = config,
+        }.Build();
+
+        // The callback fires once the core has run the module through initialization. Its argument
         // is deliberately discarded unnamed: at v11 upstream deprecated every detail accessor on
         // the status (isUsable, status(), unrecoverableException() - all [Obsolete] in the
-        // binding, so touching them is CS0618 under TreatWarningsAsErrors), because the compat
-        // init pathway always concludes and config mistakes throw synchronously from the builder
-        // instead. Dummy-credential runs on the sibling repository's emulator suite confirm the
-        // listener fires and server-side failure is not an init failure.
+        // binding, so touching them is CS0618 under TreatWarningsAsErrors), and config mistakes
+        // throw synchronously from the builder above instead. What "initialized" means here is
+        // therefore "the SDK concluded its own startup", not "the tenant accepted us" - a
+        // server-side rejection is not an init failure, as dummy-credential emulator runs in the
+        // sibling repository confirm.
         await AwaitNativeCompletion(
-            complete => MarketingCloudSdk.Init(
-                global::Android.App.Application.Context, config, _ => complete()),
+            complete => SFMCSdk.Configure(
+                global::Android.App.Application.Context, modules, _ => complete()),
             "initialization", options.InitializationTimeout, cancellationToken).ConfigureAwait(false);
     }
+
+    private static partial bool SupportedCore() => true;
 
     /// <summary>
     /// Both logging planes, because Android still has two at v11: the MobilePush module logs
@@ -120,50 +143,65 @@ public sealed partial class MarketingCloudClient
     /// fire-and-forget stance <see cref="IMarketingCloudRegistration.EditAsync"/> documents: it
     /// reports "accepted into the local registration", not server truth.
     /// </para>
+    /// <para>
+    /// The wait is bounded. <c>requestSdk</c> queues indefinitely, so an edit issued against an
+    /// SDK that never becomes operational - a failed initialization, or none attempted - would
+    /// otherwise leave the returned task pending for the lifetime of the process, which reads to a
+    /// caller as a hung <c>await</c> with nothing logged. Expiry surfaces as
+    /// <see cref="TimeoutException"/> like initialization's does.
+    /// </para>
     /// </remarks>
-    private partial Task ApplyEditsCore(IReadOnlyList<RegistrationEdit> edits)
+    private async partial Task ApplyEditsCore(IReadOnlyList<RegistrationEdit> edits)
     {
-        var applied = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Captured rather than thrown from inside the callback: the completion has to be signalled
+        // either way (an exception escaping the JNI callback would vanish into the binder thread),
+        // and rethrowing here with the original stack intact is what makes a JNI failure legible.
+        Exception? failure = null;
 
-        MarketingCloudSdk.RequestSdk(sdk =>
-        {
-            try
+        await AwaitNativeCompletion(
+            complete => MarketingCloudSdk.RequestSdk(sdk =>
             {
-                var editor = sdk.RegistrationManager.Edit();
-
-                foreach (var edit in edits)
+                try
                 {
-                    switch (edit.Kind)
+                    var editor = sdk.RegistrationManager.Edit();
+
+                    foreach (var edit in edits)
                     {
-                        case RegistrationEditKind.AddTag:
-                            editor.AddTag(edit.Key);
-                            break;
+                        switch (edit.Kind)
+                        {
+                            case RegistrationEditKind.AddTag:
+                                editor.AddTag(edit.Key);
+                                break;
 
-                        case RegistrationEditKind.RemoveTag:
-                            editor.RemoveTag(edit.Key);
-                            break;
+                            case RegistrationEditKind.RemoveTag:
+                                editor.RemoveTag(edit.Key);
+                                break;
 
-                        case RegistrationEditKind.SetAttribute:
-                            // See the remarks: no editor member at v11, so the core identity is
-                            // the real write path. The recorder already validated the value.
-                            _core.Identity.SetAttribute(edit.Key, edit.Value!);
-                            break;
+                            case RegistrationEditKind.SetAttribute:
+                                // See the remarks: no editor member at v11, so the core identity
+                                // is the real write path. The recorder already validated the value.
+                                _core.Identity.SetAttribute(edit.Key, edit.Value!);
+                                break;
+                        }
                     }
+
+                    editor.Commit();
                 }
+                catch (Exception exception)
+                {
+                    failure = exception;
+                }
+                finally
+                {
+                    complete();
+                }
+            }),
+            "the registration edit", _nativeCallbackTimeout, CancellationToken.None).ConfigureAwait(false);
 
-                editor.Commit();
-                applied.TrySetResult();
-            }
-            catch (Exception exception)
-            {
-                // A JNI failure inside the callback would otherwise vanish into the binder
-                // thread; carrying it onto the awaited task is the whole reason EditAsync is a
-                // Task on this platform.
-                applied.TrySetException(exception);
-            }
-        });
-
-        return applied.Task;
+        if (failure is not null)
+        {
+            ExceptionDispatchInfo.Capture(failure).Throw();
+        }
     }
 
     /// <remarks>

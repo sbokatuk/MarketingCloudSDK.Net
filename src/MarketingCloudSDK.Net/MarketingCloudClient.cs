@@ -25,25 +25,47 @@ namespace MarketingCloudSDK.Net;
 /// race it. A process that needs a fresh attempt restarts; that is the native SDKs' own model.
 /// </para>
 /// <para>
-/// <b>Identity is composed, not reimplemented.</b> v11 moved contact key and attribute writes to
-/// the SFMC SDK core on both platforms, so this client owns an (uninitialized) core
-/// <see cref="SfmcSdkClient"/> purely for its <see cref="SfmcSdkClient.Identity"/> - legal
-/// because the core identity operations are static-level and queue before initialization, and
-/// necessary because calling the core façade's own <c>InitializeAsync</c> here would configure
-/// the core a second time with an empty module set, which upstream forbids. The MobilePush
-/// initialization this client performs brings the core up underneath.
+/// <b>Identity and events are composed, not reimplemented.</b> v11 moved contact key, attribute
+/// and event writes to the SFMC SDK core on both platforms, so this client owns an
+/// (uninitialized) core <see cref="SfmcSdkClient"/> and delegates its
+/// <see cref="SfmcSdkClient.Identity"/> and <c>TrackCustomEvent</c> to it - legal because both are
+/// static-level operations that queue before initialization, and necessary because calling the
+/// core façade's own <c>InitializeAsync</c> here would configure the core a second time with an
+/// empty module set, which upstream forbids. The MobilePush initialization this client performs
+/// brings the core up underneath, through <c>SFMCSdk.configure</c> on Android and
+/// <c>SFMCSdk.initializeSdk</c> on iOS.
+/// </para>
+/// <para>
+/// <b>One client is enough.</b> Because of that composition, an app using MobilePush never needs to
+/// construct a <see cref="SfmcSdkClient"/> of its own - identity, custom events and initialization
+/// all arrive through this façade. Constructing one anyway is harmless (it would drive the same
+/// process-wide native SDK), but calling <em>its</em> <see cref="SfmcSdkClient.InitializeAsync"/>
+/// is not, for the reason just given.
 /// </para>
 /// </remarks>
 public sealed partial class MarketingCloudClient : IMarketingCloudClient
 {
     /// <summary>
-    /// The core façade, for <see cref="SfmcSdkClient.Identity"/> only - never initialized here;
-    /// see the class remarks.
+    /// The core façade, for <see cref="SfmcSdkClient.Identity"/> and its custom-event tracking -
+    /// never initialized here; see the class remarks.
     /// </summary>
     private readonly SfmcSdkClient _core = new();
 
     /// <summary>0 until <see cref="InitializeAsync"/> claims it; the claim is never returned.</summary>
     private int _initializationClaimed;
+
+    /// <summary>0 until an <see cref="InitializeAsync"/> call has completed successfully.</summary>
+    private int _initialized;
+
+    /// <summary>
+    /// The bound for native callback waits outside initialization - today
+    /// <see cref="IMarketingCloudRegistration.EditAsync"/>, whose <c>requestSdk</c> queue never
+    /// drains if the SDK is not coming up. Taken from
+    /// <see cref="MarketingCloudOptions.InitializationTimeout"/> when initialization is claimed,
+    /// because an edit is waiting on the same event initialization waits on; the default covers
+    /// edits issued before initialization, which both SDKs' queues legitimately allow.
+    /// </summary>
+    private TimeSpan _nativeCallbackTimeout = MarketingCloudOptions.DefaultTimeout;
 
     /// <inheritdoc />
     public ISfmcIdentity Identity { get; }
@@ -53,6 +75,23 @@ public sealed partial class MarketingCloudClient : IMarketingCloudClient
 
     /// <inheritdoc />
     public string DiagnosticState => DiagnosticStateCore();
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Straight through to the composed core - no platform seam, because the core façade already
+    /// has one per platform and duplicating it here would be two implementations of one operation.
+    /// The core client is deliberately not exposed as a property: its
+    /// <see cref="SfmcSdkClient.InitializeAsync"/> must never be called on a client this façade
+    /// composes (see the class remarks), and a public handle would invite exactly that.
+    /// </remarks>
+    public void TrackCustomEvent(string name, IReadOnlyDictionary<string, string>? attributes = null) =>
+        _core.TrackCustomEvent(name, attributes);
+
+    /// <inheritdoc />
+    public bool IsSupported => SupportedCore();
+
+    /// <inheritdoc />
+    public bool IsInitialized => Volatile.Read(ref _initialized) == 1;
 
     /// <summary>
     /// Creates the client. Nothing native happens here - construction is valid on every target
@@ -106,7 +145,27 @@ public sealed partial class MarketingCloudClient : IMarketingCloudClient
                 "if the first call failed. Await the first call instead of issuing another.");
         }
 
-        return InitializeCore(options, cancellationToken);
+        // The edit wait inherits the caller's patience: an edit queued behind an initialization
+        // that is not going to arrive should give up on the same schedule the initialization does.
+        _nativeCallbackTimeout = options.InitializationTimeout;
+
+        // The platform call starts here, synchronously - only the flag-setting is deferred, so a
+        // neutral head still throws PlatformNotSupportedException out of this method rather than
+        // from an awaited task.
+        return MarkInitialized(InitializeCore(options, cancellationToken));
+    }
+
+    /// <summary>
+    /// Awaits the platform initialization and, only on success, publishes
+    /// <see cref="IsInitialized"/>. A failed or timed-out initialization leaves the flag false
+    /// while the one-shot claim stays taken - the two answer different questions ("may I try?"
+    /// versus "is it up?"), and conflating them would let a retry through after a timeout whose
+    /// native initialization is likely still running.
+    /// </summary>
+    private async Task MarkInitialized(Task initialization)
+    {
+        await initialization.ConfigureAwait(false);
+        Volatile.Write(ref _initialized, 1);
     }
 
     /// <summary>
@@ -132,6 +191,13 @@ public sealed partial class MarketingCloudClient : IMarketingCloudClient
     // the intended outcome: an assembly whose API silently did nothing would be worse.
 
     private partial Task InitializeCore(MarketingCloudOptions options, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether this build has a native MobilePush SDK underneath it - true from the Android and
+    /// iOS legs, false from the neutral one. A plain answer rather than a throw, because it is
+    /// what code guards <em>on</em>; see <see cref="IMarketingCloudClient.IsSupported"/>.
+    /// </summary>
+    private static partial bool SupportedCore();
 
     /// <summary>
     /// Wraps (or passes through) the core identity per platform: Android and Neutral hand the

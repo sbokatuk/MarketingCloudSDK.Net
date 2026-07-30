@@ -35,6 +35,8 @@ await sdk.InitializeAsync(new MarketingCloudOptions
 sdk.Identity.SetProfileId("contact-key");           // the write side of identity (SFMC SDK core)
 sdk.Identity.SetAttribute("plan", "pro");
 
+sdk.TrackCustomEvent("checkout_started", new Dictionary<string, string> { ["cart"] = "3 items" });
+
 await sdk.Registration.EditAsync(editor =>          // tags and attributes, batched per platform
 {
     editor.AddTag("newsletter");
@@ -106,11 +108,11 @@ Everything else stays reachable, because the packages underneath arrive with thi
 - **Android**: namespace `Com.Salesforce.Marketingcloud` (package
   `MarketingCloudSDK.Net.Android`) — the inbox manager, in-app messages, notification
   customization, geofence/beacon messaging, `RequestSdk` itself; plus
-  `Com.Salesforce.Marketingcloud.Sfmcsdk` (via `SFMCSDK.Net.Android`) for the core's event
-  tracking and consent.
+  `Com.Salesforce.Marketingcloud.Sfmcsdk` (via `SFMCSDK.Net.Android`) for consent and the core's
+  event bus.
 - **iOS**: namespaces `MarketingCloudSDK` (package `MarketingCloudSDK.Net.iOS`) and `SFMCSDK`
   (package `SFMCSDK.Net.iOS`) — the full `sfmc_*` category surface (inbox, analytics, location),
-  the config builders' remaining setters, the core's event model.
+  the config builders' remaining setters, the richer event families (cart, order, catalog).
 
 Mixing is fine and expected: initialize and identify through the façade, and read the inbox or
 subscribe to events through the raw namespaces in the same app. Push UI plumbing is absent
@@ -123,6 +125,31 @@ unconditionally — and every member that would reach the native SDK throws
 `PlatformNotSupportedException` naming where the real implementation lives. Throwing, not
 no-oping: a device that silently never registered would read as missing from Marketing Cloud,
 with nothing logged anywhere.
+
+Two members are exempt and never throw, on any target framework, because they are what shared
+code *branches on*: `IsSupported` (is there a native SDK under this build?) and `IsInitialized`
+(did an `InitializeAsync` on this client succeed?). For a head that has no SDK and wants the calls
+to be harmless rather than fatal, the package also ships `NullMarketingCloudClient` — a no-op
+implementation that still validates its arguments, so it hides platforms without hiding your bugs:
+
+```csharp
+builder.Services.AddSingleton<IMarketingCloudClient>(
+    new MarketingCloudClient() is { IsSupported: true } client ? client : new NullMarketingCloudClient());
+```
+
+### One SDK or two?
+
+`MarketingCloudSDK.Net` depends on [`SFMCSDK.Net`](https://github.com/sbokatuk/SFMCSDK.Net) — the
+core façade — on *every* target framework, because v11 moved identity and event tracking into the
+SFMC SDK core. That dependency is an implementation detail you do not have to think about: this
+façade composes a core client and re-exports what it owns, so `Identity`, `TrackCustomEvent` and
+initialization all arrive through `IMarketingCloudClient`.
+
+**An app that uses MobilePush needs one client, not two.** Constructing your own `SfmcSdkClient`
+alongside is harmless — it drives the same process-wide native SDK — but **never call its
+`InitializeAsync`**: this façade has already configured the core with the MobilePush module, and
+configuring it a second time with an empty module set is something upstream forbids. Reach for
+`SFMCSDK.Net`'s own client only in an app that uses the core *without* MobilePush.
 
 ## Push prerequisites
 
@@ -141,8 +168,8 @@ The façade does not change what MobilePush itself needs from the app:
 
 ## Packages and versions
 
-Two packages. The version is `<MarketingCloudSDK iOS version>.<binding revision>` — `11.0.2.1`
-is MarketingCloudSDK **11.0.2**, revision **1**, and the Android side of the same release is
+Two packages. The version is `<MarketingCloudSDK iOS version>.<binding revision>` — `11.0.2.2`
+is MarketingCloudSDK **11.0.2**, revision **2**, and the Android side of the same release is
 marketingcloudsdk **11.0.1**.
 
 > **Why one version names one SDK.** Salesforce releases the iOS and Android SDKs on separate
@@ -158,9 +185,9 @@ marketingcloudsdk **11.0.1**.
 
 | MarketingCloudSDK.Net | MarketingCloudSDK (iOS, native) | marketingcloudsdk (Android, native) | MarketingCloudSDK.Net.iOS | MarketingCloudSDK.Net.Android | SFMCSDK.Net |
 | --- | --- | --- | --- | --- | --- |
-| 11.0.2.1 | 11.0.2 | 11.0.1 | 11.0.2.1 | 11.0.1.1 | 4.0.1.1 |
+| 11.0.2.2 | 11.0.2 | 11.0.1 | 11.0.2.2 | 11.0.1.2 | 4.0.1.1 |
 
-The dependencies are pinned **exactly** (`[11.0.2.1]` / `[11.0.1.1]` / `[4.0.1.1]`), not
+The dependencies are pinned **exactly** (`[11.0.2.2]` / `[11.0.1.2]` / `[4.0.1.1]`), not
 floored: the façade calls each binding's hand-written convenience layer — the `Action` overloads
 of `Init`/`RequestSdk` on Android, the hand-maintained `sfmc_*` category surface on iOS — and
 those carry no compatibility promise across binding revisions. A newer binding is consumed by
@@ -171,13 +198,13 @@ reason: the two release together from one commit.
 ## Installing
 
 ```xml
-<PackageReference Include="MarketingCloudSDK.Net" Version="11.0.2.1" />
+<PackageReference Include="MarketingCloudSDK.Net" Version="11.0.2.2" />
 ```
 
 MAUI apps that want the DI wiring instead reference:
 
 ```xml
-<PackageReference Include="MarketingCloudSDK.Net.Maui" Version="11.0.2.1" />
+<PackageReference Include="MarketingCloudSDK.Net.Maui" Version="11.0.2.2" />
 ```
 
 The façade ships nine target frameworks: `net8.0`, `net9.0`, `net10.0`, each with its
@@ -193,8 +220,8 @@ the same app can still consume the façade directly with one `AddSingleton` line
 **iOS 12.2** (the MobilePush framework is Swift and relies on the OS Swift runtime, ABI-stable
 from 12.2), **Android API 26** (the `.aar` manifests' own floor).
 
-The platform heads pull `MarketingCloudSDK.Net.Android 11.0.1.1` /
-`MarketingCloudSDK.Net.iOS 11.0.2.1` transitively — and with them the whole native graph
+The platform heads pull `MarketingCloudSDK.Net.Android 11.0.1.2` /
+`MarketingCloudSDK.Net.iOS 11.0.2.2` transitively — and with them the whole native graph
 (Firebase Messaging and AndroidX on Android; the AppGroupSDK payload and the SFMC SDK core on
 iOS). Every head, the neutral ones included, also pulls `SFMCSDK.Net`, whose `ISfmcIdentity` is
 part of this façade's public surface. Apps reference only this package unless they want the raw
@@ -230,6 +257,15 @@ iOS-only apps), which is also what the binding packages' own net8 support is for
 - **`DiagnosticState` is for logs, never for parsing.** State JSON where the platform has it
   (the module's on iOS, the instance's on Android once ready), the coarse lifecycle phase
   before that.
+- **Custom events go through the core too.** `TrackCustomEvent` forwards to the SFMC SDK core, the
+  same move v11 made for identity — string attribute values only, because that is the shape both
+  platforms agree on, and fire-and-forget like identity. Richer event families (cart, order,
+  catalog) and the event bus stay in the platform bindings.
+- **`IsSupported` and `IsInitialized` never throw.** They are the two members shared code branches
+  on, so they answer on every target framework — including the neutral ones, where everything else
+  throws. `IsInitialized` is a status signal, not a precondition: identity, events and registration
+  edits are all legal before initialization because both SDKs queue them. It is also not the
+  one-shot guard — after a failed initialization it stays false while the guard stays claimed.
 
 ## How this repository works
 
@@ -264,14 +300,14 @@ resolve without publishing anything.
 | `src/MarketingCloudSDK.Net.Maui/` | The thin MAUI layer: two extension classes, platform TFMs only |
 | `build/` | Pack, merge, README-check and upstream-check scripts; `packages.tsv` is the roster |
 | `tests/` | `UnitTests` (neutral leg, no workloads), `PackageTests` (nupkg shape), `DeviceTests` (one project, two heads, driving the façade over the packed package) |
-| `samples/` | A MAUI app driving initialization, identity, tags and registration reads through the façade, zero `#if` |
+| `samples/` | A MAUI app driving initialization, identity, tags, custom events and registration reads through the façade, zero `#if` |
 | `.github/workflows/` | `pr`, `build`, `release`, `auto-release` |
 
 ## Building locally
 
 ```sh
 mkdir -p artifacts   # then, when working against unreleased sibling builds, drop their nupkgs in
-./build/BuildNugets.sh                # packs both packages at 11.0.2.1 into ./artifacts
+./build/BuildNugets.sh                # packs both packages at 11.0.2.2 into ./artifacts
 dotnet test tests/MarketingCloudSDK.Net.UnitTests -p:SfmcNeutralOnly=true
 dotnet test tests/MarketingCloudSDK.Net.PackageTests
 ```
@@ -283,8 +319,8 @@ Three suites, cheapest first — each catches what the previous one cannot see:
 ```sh
 dotnet test tests/MarketingCloudSDK.Net.UnitTests -p:SfmcNeutralOnly=true   # validation, guard, neutral contract
 dotnet test tests/MarketingCloudSDK.Net.PackageTests                        # TFMs, exact pins, licence, symbols
-./.github/scripts/run-simulator-tests.sh 11.0.2.1 net9.0-ios18.0            # the façade over the real SDK
-./.github/scripts/run-emulator-tests.sh 11.0.2.1 net9.0-android35.0
+./.github/scripts/run-simulator-tests.sh 11.0.2.2 net9.0-ios18.0            # the façade over the real SDK
+./.github/scripts/run-emulator-tests.sh 11.0.2.2 net9.0-android35.0
 ```
 
 `-p:SfmcNeutralOnly=true` collapses the referenced façade to its neutral target frameworks, so
@@ -347,6 +383,33 @@ but drop its duplicate assets — Android apps want the `.android` flavor:
 This line belongs in the **application** project (this repository's device tests and sample
 carry it); it is not a package dependency, because excluding assets is a per-app resolution
 decision.
+
+**Android restore fails with `NU1107` on `Xamarin.AndroidX.Lifecycle.LiveData.Core`.** MAUI's own
+graph and the MobilePush binding graph meet at two rigid, disjoint ranges: `Microsoft.Maui.Core`
+floors `Lifecycle.LiveData` inside the 2.9.x generation, while `Microsoft.Maui.Essentials` pulls
+`Activity` 1.12.0, whose Lifecycle chain exact-ranges `LiveData.Core` at `[2.10.0, 2.10.1)`. Settle
+it in the **application** project with a direct reference to the version the 2026 generation wants:
+
+```xml
+<PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core" Version="2.10.0" />
+```
+
+Unlike the Compose line above this one ships assets — it is a real reference that pins the graph,
+not an exclusion. This repository's sample carries it, and every MAUI app on the net10 Android head
+will need it.
+
+**A stale package in `artifacts/` shadows nuget.org, and `NU1107` blames a version you never
+pinned.** The local feed is searched alongside nuget.org, so a nupkg packed here *before* a
+dependency was re-pinned keeps being resolved under the same version number — and once restored it
+is cached in the NuGet global-packages folder, where it poisons every other repository too.
+Clearing both is the fix:
+
+```bash
+rm -f artifacts/*.nupkg artifacts/*.snupkg && rm -rf ~/.nuget/packages/sfmcsdk.net/<version> && dotnet restore --force
+```
+
+The tell is a `NU1107` naming two versions of the same core binding, one of which matches no
+`Directory.Build.props` pin in any repository.
 
 **No push token arrives.** On Android: Firebase is not configured — the app needs
 `google-services.json`, and on Android 13+ the granted `POST_NOTIFICATIONS` permission. On iOS:

@@ -1,4 +1,5 @@
 using MarketingCloudSDK.Net;
+using MarketingCloudSDK.Net.Maui;
 using Microsoft.Extensions.Logging;
 
 namespace MarketingCloudSDK.Net.Sample;
@@ -20,16 +21,13 @@ public static class MauiProgram
         // IMarketingCloudClient. The whole page programs against the interface - which is also
         // what makes the page unit-testable against a fake on a plain target framework.
         //
-        // An app whose credentials live in configuration would instead call the
-        // MarketingCloudSDK.Net.Maui package's one-liner, which registers the same singleton
-        // WITH its options:
+        // The no-options overload, because this sample's credentials are typed into the page at
+        // runtime (never committed - see the README's push prerequisites), so there is nothing to
+        // register at build time. An app whose credentials live in secure configuration passes
+        // them here instead, and the client resolves them from DI:
         //
         //     builder.UseMarketingCloud(new MarketingCloudOptions { ApplicationId = ..., ... });
-        //
-        // This sample deliberately does not: its credentials are typed into the page at runtime
-        // (never committed - see the README's push prerequisites), so there are no options to
-        // register at build time and the page constructs them itself.
-        builder.Services.AddSingleton<IMarketingCloudClient, MarketingCloudClient>();
+        builder.UseMarketingCloud();
         builder.Services.AddSingleton<MainPage>();
 
 #if DEBUG

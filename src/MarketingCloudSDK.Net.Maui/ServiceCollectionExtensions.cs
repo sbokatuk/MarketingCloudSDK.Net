@@ -21,7 +21,8 @@ public static class ServiceCollectionExtensions
     /// <para>
     /// Nothing native runs here; the app awaits
     /// <see cref="IMarketingCloudClient.InitializeAsync"/> itself, with the registered options.
-    /// See <see cref="AppBuilderExtensions.UseMarketingCloud"/> for the push prerequisites that
+    /// See <see cref="AppBuilderExtensions.UseMarketingCloud(MauiAppBuilder, MarketingCloudOptions)"/>
+    /// for the push prerequisites that
     /// remain the app's job (Android 13+ <c>POST_NOTIFICATIONS</c> via
     /// <c>Permissions.PostNotifications</c>, Firebase configuration, APNs
     /// entitlement/authorization) - and for what v11 made unnecessary.
@@ -39,6 +40,31 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(options);
 
         services.TryAddSingleton(options);
+        return services.AddMarketingCloud();
+    }
+
+    /// <summary>
+    /// Registers <see cref="IMarketingCloudClient"/> as a singleton
+    /// <see cref="MarketingCloudClient"/> without options, for apps whose credentials are not
+    /// known at composition time.
+    /// </summary>
+    /// <remarks>
+    /// The overload taking <see cref="MarketingCloudOptions"/> is the usual one - credentials from
+    /// secure configuration, registered once at startup. This one exists because credentials do
+    /// not always come from configuration: an app that reads its tenant from a signed-in user's
+    /// profile, prompts for it, or switches tenants at runtime has nothing to register up front,
+    /// and would otherwise get nothing from this package and hand-write the same
+    /// <c>AddSingleton</c> the overload performs. Pass the options to
+    /// <see cref="IMarketingCloudClient.InitializeAsync"/> when you have them; nothing else
+    /// differs, and no <see cref="MarketingCloudOptions"/> is resolvable from DI.
+    /// </remarks>
+    /// <param name="services">The service collection.</param>
+    /// <returns><paramref name="services"/>, for chaining.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+    public static IServiceCollection AddMarketingCloud(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
         services.TryAddSingleton<IMarketingCloudClient, MarketingCloudClient>();
         return services;
     }

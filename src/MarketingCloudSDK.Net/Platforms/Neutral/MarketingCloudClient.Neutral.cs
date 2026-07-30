@@ -43,6 +43,10 @@ public sealed partial class MarketingCloudClient
     private partial Task InitializeCore(MarketingCloudOptions options, CancellationToken cancellationToken) =>
         throw NotSupported();
 
+    // The exception to the throwing rule, and the reason the rule is tolerable: this is the member
+    // shared code branches on before calling any of the others.
+    private static partial bool SupportedCore() => false;
+
     private partial ISfmcIdentity CreateIdentityFacade(ISfmcIdentity coreIdentity) => coreIdentity;
 
     private partial string? ContactKeyCore() => throw NotSupported();

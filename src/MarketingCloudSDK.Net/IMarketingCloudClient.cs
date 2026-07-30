@@ -103,6 +103,38 @@ public interface IMarketingCloudClient
     IMarketingCloudRegistration Registration { get; }
 
     /// <summary>
+    /// Tracks a custom engagement event with optional string attributes, through the SFMC SDK
+    /// core underneath - the same event plane
+    /// <see cref="ISfmcSdkClient.TrackCustomEvent(string, IReadOnlyDictionary{string, string})"/>
+    /// drives.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Forwarded rather than reimplemented, and surfaced here rather than left to the core façade,
+    /// because an app holding an <see cref="IMarketingCloudClient"/> should not have to discover
+    /// that a second client type exists to send an event. v11 moved event tracking to the core on
+    /// both platforms exactly as it moved identity, and this façade composes the core for both.
+    /// </para>
+    /// <para>
+    /// Fire-and-forget, like identity: the SDKs queue events and report no per-call result. Values
+    /// are strings only - the shape both platforms agree on. Richer event families (cart, order,
+    /// catalog) and the event bus live in the platform bindings; see the remarks above.
+    /// </para>
+    /// </remarks>
+    /// <param name="name">The event name. Must not be blank.</param>
+    /// <param name="attributes">
+    /// Optional string attributes. Null and empty are equivalent; keys must not be blank and
+    /// values must not be null.
+    /// </param>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="name"/> is blank, a key is blank, or the native SDK rejected the event
+    /// name.
+    /// </exception>
+    /// <exception cref="ArgumentNullException">An attribute value is null.</exception>
+    /// <exception cref="PlatformNotSupportedException">Neutral target framework.</exception>
+    void TrackCustomEvent(string name, IReadOnlyDictionary<string, string>? attributes = null);
+
+    /// <summary>
     /// What the native SDK says about itself right now, for logs and bug reports - never parse
     /// it. The shape is platform-owned and asymmetric by nature: iOS returns the MobilePush
     /// module's state JSON (falling back to the SFMC SDK core's); Android's rich state lives on
@@ -112,4 +144,32 @@ public interface IMarketingCloudClient
     /// </summary>
     /// <exception cref="PlatformNotSupportedException">Neutral target framework.</exception>
     string DiagnosticState { get; }
+
+    /// <summary>
+    /// Whether this build has a native MobilePush SDK underneath it: true on net*-android and
+    /// net*-ios application heads, false on the neutral target frameworks (a MAUI app's Windows
+    /// head, a shared class library, a unit-test host).
+    /// </summary>
+    /// <remarks>
+    /// The one member that answers on every target framework instead of throwing - it is what
+    /// shared code guards <em>on</em>, and a guard that throws would need a guard. Use it to skip
+    /// SDK work rather than to discover the platform: a fake injected in tests can report either
+    /// value, which is the point.
+    /// </remarks>
+    bool IsSupported { get; }
+
+    /// <summary>
+    /// Whether an <see cref="InitializeAsync"/> call on this client has completed successfully.
+    /// False before the first call, while one is in flight, and after one that failed or timed
+    /// out. Never throws, on any target framework.
+    /// </summary>
+    /// <remarks>
+    /// For shared code that has to answer "is it up yet?" without holding the initialization task
+    /// - a diagnostics screen, a lazily-initialized view model. It is not the one-shot guard:
+    /// initialization stays claimed after a failure (see
+    /// <see cref="MarketingCloudClient.InitializeAsync"/>), so a false here does not mean another
+    /// call is permitted. Registration and identity work is legal before initialization anyway -
+    /// both SDKs queue it - so this is a status signal, not a precondition to check.
+    /// </remarks>
+    bool IsInitialized { get; }
 }
