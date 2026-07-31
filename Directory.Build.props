@@ -25,7 +25,7 @@
       literal values on their own lines rather than composing them from other properties.
     -->
     <SfmcNativeVersion>11.0.2</SfmcNativeVersion>
-    <SfmcBindingRevision>2</SfmcBindingRevision>
+    <SfmcBindingRevision>3</SfmcBindingRevision>
     <VersionPrefix>$(SfmcNativeVersion).$(SfmcBindingRevision)</VersionPrefix>
 
     <!--
@@ -54,8 +54,8 @@
       them literal.
     -->
     <SfmcAndroidPackageVersion>11.0.1.2</SfmcAndroidPackageVersion>
-    <SfmcIosPackageVersion>11.0.2.2</SfmcIosPackageVersion>
-    <SfmcCorePackageVersion>4.0.1.1</SfmcCorePackageVersion>
+    <SfmcIosPackageVersion>11.0.2.3</SfmcIosPackageVersion>
+    <SfmcCorePackageVersion>4.0.1.2</SfmcCorePackageVersion>
   </PropertyGroup>
 
   <!--

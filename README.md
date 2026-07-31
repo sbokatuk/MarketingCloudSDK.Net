@@ -168,8 +168,8 @@ The façade does not change what MobilePush itself needs from the app:
 
 ## Packages and versions
 
-Two packages. The version is `<MarketingCloudSDK iOS version>.<binding revision>` — `11.0.2.2`
-is MarketingCloudSDK **11.0.2**, revision **2**, and the Android side of the same release is
+Two packages. The version is `<MarketingCloudSDK iOS version>.<binding revision>` — `11.0.2.3`
+is MarketingCloudSDK **11.0.2**, revision **3**, and the Android side of the same release is
 marketingcloudsdk **11.0.1**.
 
 > **Why one version names one SDK.** Salesforce releases the iOS and Android SDKs on separate
@@ -185,9 +185,9 @@ marketingcloudsdk **11.0.1**.
 
 | MarketingCloudSDK.Net | MarketingCloudSDK (iOS, native) | marketingcloudsdk (Android, native) | MarketingCloudSDK.Net.iOS | MarketingCloudSDK.Net.Android | SFMCSDK.Net |
 | --- | --- | --- | --- | --- | --- |
-| 11.0.2.2 | 11.0.2 | 11.0.1 | 11.0.2.2 | 11.0.1.2 | 4.0.1.1 |
+| 11.0.2.3 | 11.0.2 | 11.0.1 | 11.0.2.3 | 11.0.1.2 | 4.0.1.2 |
 
-The dependencies are pinned **exactly** (`[11.0.2.2]` / `[11.0.1.2]` / `[4.0.1.1]`), not
+The dependencies are pinned **exactly** (`[11.0.2.3]` / `[11.0.1.2]` / `[4.0.1.2]`), not
 floored: the façade calls each binding's hand-written convenience layer — the `Action` overloads
 of `Init`/`RequestSdk` on Android, the hand-maintained `sfmc_*` category surface on iOS — and
 those carry no compatibility promise across binding revisions. A newer binding is consumed by
@@ -198,13 +198,13 @@ reason: the two release together from one commit.
 ## Installing
 
 ```xml
-<PackageReference Include="MarketingCloudSDK.Net" Version="11.0.2.2" />
+<PackageReference Include="MarketingCloudSDK.Net" Version="11.0.2.3" />
 ```
 
 MAUI apps that want the DI wiring instead reference:
 
 ```xml
-<PackageReference Include="MarketingCloudSDK.Net.Maui" Version="11.0.2.2" />
+<PackageReference Include="MarketingCloudSDK.Net.Maui" Version="11.0.2.3" />
 ```
 
 The façade ships nine target frameworks: `net8.0`, `net9.0`, `net10.0`, each with its
@@ -221,7 +221,7 @@ the same app can still consume the façade directly with one `AddSingleton` line
 from 12.2), **Android API 26** (the `.aar` manifests' own floor).
 
 The platform heads pull `MarketingCloudSDK.Net.Android 11.0.1.2` /
-`MarketingCloudSDK.Net.iOS 11.0.2.2` transitively — and with them the whole native graph
+`MarketingCloudSDK.Net.iOS 11.0.2.3` transitively — and with them the whole native graph
 (Firebase Messaging and AndroidX on Android; the AppGroupSDK payload and the SFMC SDK core on
 iOS). Every head, the neutral ones included, also pulls `SFMCSDK.Net`, whose `ISfmcIdentity` is
 part of this façade's public surface. Apps reference only this package unless they want the raw
@@ -307,7 +307,7 @@ resolve without publishing anything.
 
 ```sh
 mkdir -p artifacts   # then, when working against unreleased sibling builds, drop their nupkgs in
-./build/BuildNugets.sh                # packs both packages at 11.0.2.2 into ./artifacts
+./build/BuildNugets.sh                # packs both packages at 11.0.2.3 into ./artifacts
 dotnet test tests/MarketingCloudSDK.Net.UnitTests -p:SfmcNeutralOnly=true
 dotnet test tests/MarketingCloudSDK.Net.PackageTests
 ```
@@ -319,8 +319,8 @@ Three suites, cheapest first — each catches what the previous one cannot see:
 ```sh
 dotnet test tests/MarketingCloudSDK.Net.UnitTests -p:SfmcNeutralOnly=true   # validation, guard, neutral contract
 dotnet test tests/MarketingCloudSDK.Net.PackageTests                        # TFMs, exact pins, licence, symbols
-./.github/scripts/run-simulator-tests.sh 11.0.2.2 net9.0-ios18.0            # the façade over the real SDK
-./.github/scripts/run-emulator-tests.sh 11.0.2.2 net9.0-android35.0
+./.github/scripts/run-simulator-tests.sh 11.0.2.3 net9.0-ios18.0            # the façade over the real SDK
+./.github/scripts/run-emulator-tests.sh 11.0.2.3 net9.0-android35.0
 ```
 
 `-p:SfmcNeutralOnly=true` collapses the referenced façade to its neutral target frameworks, so
